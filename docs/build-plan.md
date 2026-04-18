@@ -524,7 +524,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T39. Settings page
+### ☑ T39. Settings page
 **Specs:** `docs/admin-ui-spec.md §9`
 **Depends:** T28
 **Files:**

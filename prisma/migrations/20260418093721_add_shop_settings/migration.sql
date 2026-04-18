@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Shop" ADD COLUMN     "retentionDays" INTEGER NOT NULL DEFAULT 365,
+ADD COLUMN     "saltVersion" INTEGER NOT NULL DEFAULT 1;

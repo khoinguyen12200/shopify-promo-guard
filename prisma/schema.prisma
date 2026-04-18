@@ -20,8 +20,10 @@ model Shop {
   accessToken   String
   scope         String
   salt          String
+  saltVersion   Int      @default(1)
   encryptionKey String
 
+  retentionDays       Int     @default(365)
   protectedDataLevel  Int     @default(0)
   timezone            String?
   currencyCode        String?
