@@ -3,6 +3,7 @@
  * Related: docs/system-design.md § Replace-in-place (T34)
  */
 
+import prisma from "../db.server.js";
 import type { AdminGqlClient } from "./admin-graphql.server.js";
 import { ShopifyUserError } from "./admin-graphql.server.js";
 
@@ -448,4 +449,70 @@ export async function replaceInPlace(
     replacedDiscountNodeId: resolved.discountNodeId,
     code: args.code,
   };
+}
+
+// -- Status transitions (T36) ----------------------------------------------
+
+export type OfferStatus = "active" | "paused";
+
+/**
+ * Flip a protected offer's status. Scoped by shop so a merchant can only
+ * touch their own offers. Returns the new status.
+ *
+ * The Validation/Discount Functions read `status` from the shop-level shards
+ * at runtime and skip offers where status != "active" — so pausing takes
+ * effect as soon as the metafield shard rebuild runs (T42's cold-start path
+ * picks this up; `/offers/:id/edit` triggers it too).
+ */
+export async function setOfferStatus(args: {
+  offerId: string;
+  shopId: string;
+  status: OfferStatus;
+}): Promise<{ status: OfferStatus }> {
+  const updated = await prisma.protectedOffer.updateMany({
+    where: {
+      id: args.offerId,
+      shopId: args.shopId,
+      archivedAt: null,
+    },
+    data: { status: args.status },
+  });
+  if (updated.count === 0) {
+    throw new Error("setOfferStatus: offer not found or archived");
+  }
+  return { status: args.status };
+}
+
+export interface UpdateOfferFieldsInput {
+  offerId: string;
+  shopId: string;
+  name?: string;
+  mode?: "silent_strip" | "block" | "flag_only";
+}
+
+/**
+ * Update the editable fields of a protected offer. Codes and replaced-node
+ * references are immutable through this path — T33/T34 handle those via
+ * their own flows.
+ */
+export async function updateOfferFields(
+  args: UpdateOfferFieldsInput,
+): Promise<{ updated: boolean }> {
+  const data: { name?: string; mode?: string } = {};
+  if (typeof args.name === "string") data.name = args.name.trim();
+  if (args.mode) data.mode = args.mode;
+  if (Object.keys(data).length === 0) return { updated: false };
+
+  const result = await prisma.protectedOffer.updateMany({
+    where: {
+      id: args.offerId,
+      shopId: args.shopId,
+      archivedAt: null,
+    },
+    data,
+  });
+  if (result.count === 0) {
+    throw new Error("updateOfferFields: offer not found or archived");
+  }
+  return { updated: true };
 }

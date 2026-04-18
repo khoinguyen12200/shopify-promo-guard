@@ -5,6 +5,20 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const updateManyMock = vi.fn(
+  async (args: unknown): Promise<{ count: number }> => {
+    void args;
+    return { count: 1 };
+  },
+);
+vi.mock("../db.server.js", () => ({
+  default: {
+    protectedOffer: {
+      updateMany: (args: unknown) => updateManyMock(args),
+    },
+  },
+}));
+
 import type { AdminGqlClient } from "./admin-graphql.server.js";
 import { ShopifyUserError } from "./admin-graphql.server.js";
 import {
@@ -14,6 +28,8 @@ import {
   getDiscountFunctionId,
   readNativeDiscountByCode,
   replaceInPlace,
+  setOfferStatus,
+  updateOfferFields,
 } from "./offer-service.server.js";
 
 type MockResponse = { status?: number; body: unknown };
@@ -42,6 +58,8 @@ function makeClient(queue: MockResponse[]): {
 
 beforeEach(() => {
   __resetFunctionIdCacheForTests();
+  updateManyMock.mockClear();
+  updateManyMock.mockImplementation(async () => ({ count: 1 }));
 });
 
 // -- getDiscountFunctionId --------------------------------------------------
@@ -480,5 +498,59 @@ describe("replaceInPlace", () => {
     await expect(replaceInPlace(client, { code: "MISSING" })).rejects.toThrow(
       /could not resolve/i,
     );
+  });
+});
+
+// -- Status transitions (T36) ----------------------------------------------
+
+describe("setOfferStatus", () => {
+  it("scopes the update by offerId + shopId + archivedAt", async () => {
+    await setOfferStatus({
+      offerId: "offer-1",
+      shopId: "shop-1",
+      status: "paused",
+    });
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: "offer-1",
+        shopId: "shop-1",
+        archivedAt: null,
+      },
+      data: { status: "paused" },
+    });
+  });
+
+  it("throws when no row matches (cross-shop attempt / archived)", async () => {
+    updateManyMock.mockResolvedValueOnce({ count: 0 });
+    await expect(
+      setOfferStatus({
+        offerId: "offer-1",
+        shopId: "other-shop",
+        status: "active",
+      }),
+    ).rejects.toThrow(/not found/i);
+  });
+});
+
+describe("updateOfferFields", () => {
+  it("only passes the provided fields through", async () => {
+    await updateOfferFields({
+      offerId: "offer-1",
+      shopId: "shop-1",
+      name: "renamed",
+    });
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: { id: "offer-1", shopId: "shop-1", archivedAt: null },
+      data: { name: "renamed" },
+    });
+  });
+
+  it("is a no-op when no fields are provided", async () => {
+    const result = await updateOfferFields({
+      offerId: "offer-1",
+      shopId: "shop-1",
+    });
+    expect(result.updated).toBe(false);
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 });

@@ -1,12 +1,13 @@
 /**
- * See: docs/admin-ui-spec.md §6 (Offer detail page + stats)
+ * See: docs/admin-ui-spec.md §6 (Offer detail page + stats + pause/resume)
  * Related: docs/database-design.md (ProtectedOffer, ProtectedCode, RedemptionRecord, FlaggedOrder)
  */
-import type { LoaderFunctionArgs } from "react-router";
-import { useLoaderData } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { Form, useLoaderData } from "react-router";
 
 import { StatsCard } from "../components/stats-card";
 import prisma from "../db.server";
+import { setOfferStatus } from "../lib/offer-service.server";
 import { authenticate } from "../shopify.server";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -121,6 +122,38 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
 };
 
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const id = params.id;
+  if (!id) throw new Response("Not found", { status: 404 });
+
+  const shop = await prisma.shop.findUnique({
+    where: { shopDomain: session.shop },
+  });
+  if (!shop) throw new Response("Shop not found", { status: 404 });
+
+  const form = await request.formData();
+  const intent = String(form.get("intent") ?? "");
+
+  if (intent === "pause") {
+    await setOfferStatus({
+      offerId: id,
+      shopId: shop.id,
+      status: "paused",
+    });
+    return { ok: true as const };
+  }
+  if (intent === "resume") {
+    await setOfferStatus({
+      offerId: id,
+      shopId: shop.id,
+      status: "active",
+    });
+    return { ok: true as const };
+  }
+  throw new Response("Unknown intent", { status: 400 });
+};
+
 function formatDate(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString(undefined, {
@@ -157,6 +190,16 @@ export default function OfferDetail() {
           </s-text>
         </s-stack>
         <s-stack direction="inline" gap="base">
+          <Form method="post">
+            <input
+              type="hidden"
+              name="intent"
+              value={offer.status === "paused" ? "resume" : "pause"}
+            />
+            <s-button type="submit">
+              {offer.status === "paused" ? "Resume" : "Pause"}
+            </s-button>
+          </Form>
           <s-button href={editHref}>Edit</s-button>
           <s-button href={deleteHref} variant="primary" tone="critical">
             Delete

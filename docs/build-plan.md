@@ -486,7 +486,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T36. Edit offer + pause/resume
+### ☑ T36. Edit offer + pause/resume
 **Specs:** `docs/admin-ui-spec.md §6`
 **Depends:** T35
 **Files:**
