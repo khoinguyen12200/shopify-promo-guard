@@ -629,7 +629,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T46. Admin dashboard + shops list
+### ☑ T46. Admin dashboard + shops list
 **Specs:** `docs/platform-admin-spec.md §4, §5`
 **Depends:** T45
 **Files:**
