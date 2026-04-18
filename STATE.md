@@ -6,8 +6,8 @@ Status markers: `☑` done · `⚠` blocked · `⊖` deferred · `☐` pending
 
 ## Current
 
-**Last completed:** T03
-**Next task:** T04 (per-shop salt + encryption key)
+**Last completed:** T04
+**Next task:** T05 (shared-rust skeleton)
 **Run mode:** unattended
 
 ## Completed
@@ -15,6 +15,7 @@ Status markers: `☑` done · `⚠` blocked · `⊖` deferred · `☐` pending
 - ☑ T01 — docker-compose.yml for local Postgres (baseline scaffold bundled)
 - ☑ T02 — Prisma schema + init_promo_guard migration (fixed Makefile test-fixture-parity guard)
 - ☑ T03 — .env.example + zod env.server.ts (bumped shopify-app-session-storage-prisma to 9, dropped yarn.lock)
+- ☑ T04 — crypto.server.ts + shop.server.ts + seed-dev.ts + Vitest wired (17 tests)
 
 ## Blocked
 

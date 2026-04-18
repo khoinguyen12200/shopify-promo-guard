@@ -51,7 +51,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T04. Per-shop salt + encryption key
+### ☑ T04. Per-shop salt + encryption key
 **Specs:** `docs/database-design.md § Encryption approach` · `docs/normalization-spec.md §7`
 **Depends:** T02, T03
 **Files:**
