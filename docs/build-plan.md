@@ -726,7 +726,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T53. Worker deploy (Cloud Run Job or second service)
+### ☑ T53. Worker deploy (Cloud Run Job or second service)
 **Specs:** `docs/webhook-spec.md §12`
 **Depends:** T51, T52
 **Files:**
