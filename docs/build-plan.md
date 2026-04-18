@@ -38,7 +38,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T03. `.env` + env loading
+### ☑ T03. `.env` + env loading
 **Specs:** `CLAUDE.md § Infrastructure`
 **Depends:** T01
 **Files:**

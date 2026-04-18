@@ -6,14 +6,15 @@ Status markers: `☑` done · `⚠` blocked · `⊖` deferred · `☐` pending
 
 ## Current
 
-**Last completed:** T02
-**Next task:** T03 (.env + env loading)
+**Last completed:** T03
+**Next task:** T04 (per-shop salt + encryption key)
 **Run mode:** unattended
 
 ## Completed
 
 - ☑ T01 — docker-compose.yml for local Postgres (baseline scaffold bundled)
 - ☑ T02 — Prisma schema + init_promo_guard migration (fixed Makefile test-fixture-parity guard)
+- ☑ T03 — .env.example + zod env.server.ts (bumped shopify-app-session-storage-prisma to 9, dropped yarn.lock)
 
 ## Blocked
 
