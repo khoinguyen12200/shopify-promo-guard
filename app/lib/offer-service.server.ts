@@ -1,6 +1,6 @@
 /**
  * See: docs/admin-ui-spec.md §5 (Case B — create new app-owned discount)
- * Related: docs/system-design.md § Replace-in-place (T34 extends this module)
+ * Related: docs/system-design.md § Replace-in-place (T34)
  */
 
 import type { AdminGqlClient } from "./admin-graphql.server.js";
@@ -258,4 +258,194 @@ export async function createNewProtectedDiscount(
     );
   }
   return { discountNodeId: discountId, code };
+}
+
+// -- Replace-in-place (T34) ------------------------------------------------
+
+const CODE_DISCOUNT_NODE_BY_CODE = /* GraphQL */ `
+  query CodeDiscountNodeByCode($code: String!) {
+    codeDiscountNodeByCode(code: $code) {
+      id
+      codeDiscount {
+        ... on DiscountCodeBasic {
+          title
+          startsAt
+          endsAt
+          usageLimit
+          appliesOncePerCustomer
+          customerGets {
+            value {
+              ... on DiscountPercentage {
+                percentage
+              }
+              ... on DiscountAmount {
+                amount {
+                  amount
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const DISCOUNT_CODE_DEACTIVATE = /* GraphQL */ `
+  mutation DiscountCodeDeactivate($id: ID!) {
+    discountCodeDeactivate(id: $id) {
+      codeDiscountNode {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+interface CodeDiscountNodeByCodeData {
+  codeDiscountNodeByCode: {
+    id: string;
+    codeDiscount?: {
+      title?: string | null;
+      startsAt?: string | null;
+      endsAt?: string | null;
+      usageLimit?: number | null;
+      appliesOncePerCustomer?: boolean | null;
+      customerGets?: {
+        value?: {
+          percentage?: number | null;
+          amount?: { amount?: string | null } | null;
+        } | null;
+      } | null;
+    } | null;
+  } | null;
+}
+
+interface DiscountCodeDeactivateData {
+  discountCodeDeactivate: {
+    codeDiscountNode: { id: string } | null;
+    userErrors: Array<{
+      field?: string[] | null;
+      message: string;
+      code?: string | null;
+    }>;
+  };
+}
+
+export interface ResolvedNativeDiscount {
+  discountNodeId: string;
+  amount: NewDiscountAmount;
+  appliesOncePerCustomer: boolean;
+  endsAt: string | null;
+}
+
+/**
+ * Read an existing native discount by its code string. Returns the fields
+ * we copy into the replacement app-owned discount. Supports DiscountCodeBasic
+ * only for MVP — Bxgy / FreeShipping codes cannot silent-strip.
+ */
+export async function readNativeDiscountByCode(
+  client: AdminGqlClient,
+  code: string,
+): Promise<ResolvedNativeDiscount | null> {
+  const body = await runGql<CodeDiscountNodeByCodeData>(
+    client,
+    CODE_DISCOUNT_NODE_BY_CODE,
+    { code },
+    "codeDiscountNodeByCode",
+  );
+  const node = body.data?.codeDiscountNodeByCode;
+  if (!node?.id) return null;
+  const detail = node.codeDiscount;
+  if (!detail) return null;
+
+  const percentRaw = detail.customerGets?.value?.percentage;
+  const amountRaw = detail.customerGets?.value?.amount?.amount;
+  let amount: NewDiscountAmount;
+  if (typeof percentRaw === "number" && percentRaw > 0) {
+    // Shopify returns percentage as 0-1 decimal. Convert to whole percent.
+    const whole = percentRaw <= 1 ? percentRaw * 100 : percentRaw;
+    amount = { kind: "percentage", percent: Math.round(whole * 100) / 100 };
+  } else if (typeof amountRaw === "string" && amountRaw.length > 0) {
+    const parsed = Number(amountRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    amount = { kind: "fixed", amount: parsed };
+  } else {
+    return null;
+  }
+
+  return {
+    discountNodeId: node.id,
+    amount,
+    appliesOncePerCustomer: Boolean(detail.appliesOncePerCustomer),
+    endsAt: detail.endsAt ?? null,
+  };
+}
+
+/**
+ * Deactivate an existing native discount. Must run BEFORE
+ * `discountCodeAppCreate` with the same code — Shopify enforces code-string
+ * uniqueness across active discounts.
+ */
+export async function discountCodeDeactivate(
+  client: AdminGqlClient,
+  discountNodeId: string,
+): Promise<void> {
+  const body = await runGql<DiscountCodeDeactivateData>(
+    client,
+    DISCOUNT_CODE_DEACTIVATE,
+    { id: discountNodeId },
+    "discountCodeDeactivate",
+  );
+  const payload = body.data?.discountCodeDeactivate;
+  if (payload?.userErrors && payload.userErrors.length > 0) {
+    throw new ShopifyUserError(payload.userErrors);
+  }
+}
+
+export interface ReplaceInPlaceResult {
+  discountNodeId: string;
+  replacedDiscountNodeId: string;
+  code: string;
+}
+
+/**
+ * Silent-strip replace-in-place: deactivate the existing native discount,
+ * then create an app-owned discount with the same code and copied config.
+ *
+ * Ordering matters — if we create first, Shopify rejects with
+ * "code must be unique".
+ */
+export async function replaceInPlace(
+  client: AdminGqlClient,
+  args: { code: string },
+): Promise<ReplaceInPlaceResult> {
+  const resolved = await readNativeDiscountByCode(client, args.code);
+  if (!resolved) {
+    throw new Error(
+      `replaceInPlace: could not resolve native discount for code "${args.code}"`,
+    );
+  }
+
+  // Deactivate FIRST — otherwise discountCodeAppCreate hits uniqueness error.
+  await discountCodeDeactivate(client, resolved.discountNodeId);
+
+  const created = await createNewProtectedDiscount(client, {
+    code: args.code,
+    amount: resolved.amount,
+    appliesOncePerCustomer: resolved.appliesOncePerCustomer,
+    endsAt: resolved.endsAt
+      ? resolved.endsAt.slice(0, 10)
+      : null,
+  });
+
+  return {
+    discountNodeId: created.discountNodeId,
+    replacedDiscountNodeId: resolved.discountNodeId,
+    code: args.code,
+  };
 }

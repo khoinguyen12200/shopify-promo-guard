@@ -1,10 +1,13 @@
 /**
- * See: docs/admin-ui-spec.md §5 (Create offer form)
+ * See: docs/admin-ui-spec.md §5 (Create offer form + silent-strip confirmation)
+ * Related: docs/system-design.md § Replace-in-place (T34)
  */
-import { Form } from "react-router";
-import { useState } from "react";
+import { Form, useSubmit } from "react-router";
+import { useRef, useState } from "react";
 
 import { CodePicker, type CodePickerSuggestion } from "./code-picker";
+import { ReplaceInPlaceModal } from "./replace-in-place-modal";
+import type { SelectedCode } from "./code-picker";
 
 export type OfferFormProps = {
   suggested: CodePickerSuggestion[];
@@ -20,6 +23,15 @@ export type OfferFormProps = {
   };
 };
 
+function nativeCodesNeedingReplacement(selected: SelectedCode[]): string[] {
+  // "suggested" / "other" / "existing" all mean the code resolves to a native
+  // non-app-owned Shopify discount. "manual-missing" means we just created
+  // an app-owned discount for it via T33 — no replace-in-place needed.
+  return selected
+    .filter((s) => !s.isAppOwned && s.origin !== "manual-missing")
+    .map((s) => s.code);
+}
+
 export function OfferForm({
   suggested,
   other,
@@ -30,11 +42,53 @@ export function OfferForm({
   const [mode, setMode] = useState<"block" | "silent_strip">(
     defaultValues?.mode ?? "silent_strip",
   );
+  const [pendingReplaceCodes, setPendingReplaceCodes] = useState<
+    string[] | null
+  >(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const submit = useSubmit();
+
+  function readSelectedFromForm(): SelectedCode[] {
+    const form = formRef.current;
+    if (!form) return [];
+    const raw = new FormData(form).get("selectedCodes");
+    if (typeof raw !== "string") return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as SelectedCode[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (mode !== "silent_strip") return;
+    const selected = readSelectedFromForm();
+    const needs = nativeCodesNeedingReplacement(selected);
+    if (needs.length === 0) return;
+    e.preventDefault();
+    setPendingReplaceCodes(needs);
+  }
+
+  function confirmReplace() {
+    setPendingReplaceCodes(null);
+    if (formRef.current) submit(formRef.current);
+  }
 
   return (
-    <Form method="post">
+    <Form method="post" ref={formRef} onSubmit={onSubmit}>
       {fieldErrors?.form ? (
         <s-banner tone="critical">{fieldErrors.form}</s-banner>
+      ) : null}
+
+      {pendingReplaceCodes ? (
+        <s-section>
+          <ReplaceInPlaceModal
+            codes={pendingReplaceCodes}
+            onConfirm={confirmReplace}
+            onCancel={() => setPendingReplaceCodes(null)}
+          />
+        </s-section>
       ) : null}
 
       <s-section heading="Name">

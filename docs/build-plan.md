@@ -460,7 +460,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T34. Replace-in-place flow
+### ☑ T34. Replace-in-place flow
 **Specs:** `docs/admin-ui-spec.md §5 (silent-strip with existing code)` · `docs/system-design.md § Replace-in-place`
 **Depends:** T33
 **Files:**

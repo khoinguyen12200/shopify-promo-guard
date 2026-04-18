@@ -10,7 +10,10 @@ import { ShopifyUserError } from "./admin-graphql.server.js";
 import {
   __resetFunctionIdCacheForTests,
   createNewProtectedDiscount,
+  discountCodeDeactivate,
   getDiscountFunctionId,
+  readNativeDiscountByCode,
+  replaceInPlace,
 } from "./offer-service.server.js";
 
 type MockResponse = { status?: number; body: unknown };
@@ -263,5 +266,219 @@ describe("createNewProtectedDiscount", () => {
         appliesOncePerCustomer: true,
       }),
     ).rejects.toBeInstanceOf(ShopifyUserError);
+  });
+});
+
+// -- readNativeDiscountByCode ----------------------------------------------
+
+describe("readNativeDiscountByCode", () => {
+  it("parses a percentage DiscountCodeBasic (0-1 decimal form)", async () => {
+    const { client } = makeClient([
+      {
+        body: {
+          data: {
+            codeDiscountNodeByCode: {
+              id: "gid://shopify/DiscountNode/old",
+              codeDiscount: {
+                title: "WELCOME10",
+                startsAt: "2026-01-01T00:00:00Z",
+                endsAt: "2026-12-31T23:59:59Z",
+                usageLimit: null,
+                appliesOncePerCustomer: true,
+                customerGets: { value: { percentage: 0.1 } },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await readNativeDiscountByCode(client, "WELCOME10");
+    expect(result).toEqual({
+      discountNodeId: "gid://shopify/DiscountNode/old",
+      amount: { kind: "percentage", percent: 10 },
+      appliesOncePerCustomer: true,
+      endsAt: "2026-12-31T23:59:59Z",
+    });
+  });
+
+  it("parses a fixed-amount DiscountCodeBasic", async () => {
+    const { client } = makeClient([
+      {
+        body: {
+          data: {
+            codeDiscountNodeByCode: {
+              id: "gid://shopify/DiscountNode/fixed",
+              codeDiscount: {
+                title: "NEWBIE5",
+                startsAt: null,
+                endsAt: null,
+                appliesOncePerCustomer: false,
+                customerGets: {
+                  value: { amount: { amount: "5.00" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await readNativeDiscountByCode(client, "NEWBIE5");
+    expect(result?.amount).toEqual({ kind: "fixed", amount: 5 });
+    expect(result?.appliesOncePerCustomer).toBe(false);
+    expect(result?.endsAt).toBeNull();
+  });
+
+  it("returns null when the code is not found", async () => {
+    const { client } = makeClient([
+      { body: { data: { codeDiscountNodeByCode: null } } },
+    ]);
+    expect(await readNativeDiscountByCode(client, "NOPE")).toBeNull();
+  });
+});
+
+// -- discountCodeDeactivate -------------------------------------------------
+
+describe("discountCodeDeactivate", () => {
+  it("throws ShopifyUserError when userErrors are returned", async () => {
+    const { client } = makeClient([
+      {
+        body: {
+          data: {
+            discountCodeDeactivate: {
+              codeDiscountNode: null,
+              userErrors: [
+                { field: ["id"], message: "Discount not found" },
+              ],
+            },
+          },
+        },
+      },
+    ]);
+    await expect(
+      discountCodeDeactivate(client, "gid://shopify/DiscountNode/bad"),
+    ).rejects.toBeInstanceOf(ShopifyUserError);
+  });
+
+  it("resolves silently on success", async () => {
+    const { client } = makeClient([
+      {
+        body: {
+          data: {
+            discountCodeDeactivate: {
+              codeDiscountNode: { id: "gid://shopify/DiscountNode/ok" },
+              userErrors: [],
+            },
+          },
+        },
+      },
+    ]);
+    await expect(
+      discountCodeDeactivate(client, "gid://shopify/DiscountNode/ok"),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// -- replaceInPlace ---------------------------------------------------------
+
+describe("replaceInPlace", () => {
+  const functionsResponse: MockResponse = {
+    body: {
+      data: {
+        shopifyFunctions: {
+          nodes: [
+            {
+              id: "gid://shopify/ShopifyFunction/pg",
+              apiType: "discount",
+              title: "Promo Guard Discount",
+              app: { title: "Promo Guard" },
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  it("deactivates BEFORE creating — ordering is load-bearing", async () => {
+    const callOrder: string[] = [];
+    const spy = vi.fn(async (query: string) => {
+      if (query.includes("codeDiscountNodeByCode")) {
+        callOrder.push("read");
+        return responseLike({
+          body: {
+            data: {
+              codeDiscountNodeByCode: {
+                id: "gid://shopify/DiscountNode/old",
+                codeDiscount: {
+                  appliesOncePerCustomer: true,
+                  customerGets: { value: { percentage: 0.1 } },
+                  endsAt: null,
+                },
+              },
+            },
+          },
+        });
+      }
+      if (query.includes("discountCodeDeactivate")) {
+        callOrder.push("deactivate");
+        return responseLike({
+          body: {
+            data: {
+              discountCodeDeactivate: {
+                codeDiscountNode: { id: "gid://shopify/DiscountNode/old" },
+                userErrors: [],
+              },
+            },
+          },
+        });
+      }
+      if (query.includes("shopifyFunctions")) {
+        callOrder.push("functions");
+        return responseLike(functionsResponse);
+      }
+      if (query.includes("discountCodeAppCreate")) {
+        callOrder.push("create");
+        return responseLike({
+          body: {
+            data: {
+              discountCodeAppCreate: {
+                codeAppDiscount: {
+                  discountId: "gid://shopify/DiscountNode/new",
+                  title: "Promo Guard — WELCOME10",
+                },
+                userErrors: [],
+              },
+            },
+          },
+        });
+      }
+      throw new Error(`unexpected query: ${query}`);
+    });
+    const client = spy as unknown as AdminGqlClient;
+
+    const result = await replaceInPlace(client, { code: "WELCOME10" });
+
+    expect(result).toEqual({
+      discountNodeId: "gid://shopify/DiscountNode/new",
+      replacedDiscountNodeId: "gid://shopify/DiscountNode/old",
+      code: "WELCOME10",
+    });
+
+    // Deactivate must come BEFORE create. Function-id lookup can happen
+    // either before or after deactivate, but create must be last.
+    const deactivateIdx = callOrder.indexOf("deactivate");
+    const createIdx = callOrder.indexOf("create");
+    expect(deactivateIdx).toBeGreaterThan(-1);
+    expect(createIdx).toBeGreaterThan(deactivateIdx);
+  });
+
+  it("throws when the existing code cannot be resolved", async () => {
+    const { client } = makeClient([
+      { body: { data: { codeDiscountNodeByCode: null } } },
+    ]);
+    await expect(replaceInPlace(client, { code: "MISSING" })).rejects.toThrow(
+      /could not resolve/i,
+    );
   });
 });

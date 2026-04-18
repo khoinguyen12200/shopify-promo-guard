@@ -14,6 +14,7 @@ import {
 } from "../lib/discount-query.server";
 import {
   createNewProtectedDiscount,
+  replaceInPlace,
   type NewDiscountAmount,
 } from "../lib/offer-service.server";
 import { ShopifyUserError } from "../lib/admin-graphql.server";
@@ -184,6 +185,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { fieldErrors, values: { name, mode } };
   }
 
+  // Replace-in-place (T34): in silent-strip mode, any selected code that
+  // resolves to a native (non-app-owned) discount must be swapped for an
+  // app-owned copy before we save — otherwise our Discount Function never
+  // runs for that code.
+  const prepared = await Promise.all(
+    selected.map(async (s) => {
+      const needsReplace =
+        mode === "silent_strip" &&
+        !s.isAppOwned &&
+        s.origin !== "manual-missing";
+
+      if (!needsReplace) {
+        return {
+          code: s.code,
+          codeUpper: s.code.toUpperCase(),
+          discountNodeId: s.discountNodeId ?? null,
+          isAppOwned: s.isAppOwned ?? false,
+          replacedDiscountNodeId: null as string | null,
+        };
+      }
+
+      try {
+        const result = await replaceInPlace(admin.graphql, { code: s.code });
+        return {
+          code: s.code,
+          codeUpper: s.code.toUpperCase(),
+          discountNodeId: result.discountNodeId,
+          isAppOwned: true,
+          replacedDiscountNodeId: result.replacedDiscountNodeId,
+        };
+      } catch (err) {
+        const message =
+          err instanceof ShopifyUserError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Replace-in-place failed.";
+        throw new Response(
+          `Could not replace "${s.code}" — ${message}`,
+          { status: 502 },
+        );
+      }
+    }),
+  );
+
   const offer = await prisma.protectedOffer.create({
     data: {
       shopId: shop.id,
@@ -191,11 +237,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       mode,
       status: "active",
       codes: {
-        create: selected.map((s) => ({
-          code: s.code,
-          codeUpper: s.code.toUpperCase(),
-          discountNodeId: s.discountNodeId ?? null,
-          isAppOwned: s.isAppOwned ?? false,
+        create: prepared.map((p) => ({
+          code: p.code,
+          codeUpper: p.codeUpper,
+          discountNodeId: p.discountNodeId,
+          isAppOwned: p.isAppOwned,
+          replacedDiscountNodeId: p.replacedDiscountNodeId,
         })),
       },
     },
