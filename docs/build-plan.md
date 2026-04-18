@@ -80,7 +80,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T06. FNV-1a + salted hash — Rust + Node + fixture
+### ☑ T06. FNV-1a + salted hash — Rust + Node + fixture
 **Specs:** `docs/normalization-spec.md §5, §7, §9`
 **Depends:** T05
 **Files:**
@@ -186,7 +186,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 2 — Webhooks + job queue
 
-### ☐ T14. Webhook auth + dedup middleware
+### ☑ T14. Webhook auth + dedup middleware
 **Specs:** `docs/webhook-spec.md §3, §4`
 **Depends:** T02, T03
 **Files:**
@@ -199,7 +199,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T15. Job queue (table-backed) + worker process
+### ☑ T15. Job queue (table-backed) + worker process
 **Specs:** `docs/webhook-spec.md §8, §12`
 **Depends:** T02
 **Files:**
@@ -214,7 +214,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T16. Admin GraphQL helpers
+### ☑ T16. Admin GraphQL helpers
 **Specs:** `docs/webhook-spec.md §9` · `docs/function-queries-spec.md § Verified Shopify schema facts`
 **Depends:** T04
 **Files:**
@@ -381,7 +381,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 4 — Merchant admin UI
 
-### ☐ T28. Remix shell + Shopify OAuth wiring
+### ☑ T28. Remix shell + Shopify OAuth wiring
 **Specs:** `docs/admin-ui-spec.md §2, §10`
 **Depends:** T03, T04
 **Files:**
@@ -580,7 +580,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 7 — Public pages
 
-### ☐ T43. Public layout + landing page
+### ☑ T43. Public layout + landing page
 **Specs:** `docs/landing-page-spec.md §4, §12`
 **Depends:** T03
 **Files:**
