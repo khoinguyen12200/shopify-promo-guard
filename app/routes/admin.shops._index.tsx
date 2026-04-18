@@ -159,177 +159,105 @@ export default function AdminShopsIndex() {
 
   return (
     <div>
-      <header style={headerStyle}>
-        <h1 style={h1Style}>Shops</h1>
-        <span style={subtleStyle}>
-          {total === 0
-            ? "0 shops"
-            : `Showing ${start}–${end} of ${total.toLocaleString()}`}
-        </span>
+      <header className="pg-page-header">
+        <div>
+          <h1>Shops</h1>
+          <p>
+            {total === 0
+              ? "0 shops"
+              : `Showing ${start}–${end} of ${total.toLocaleString()}`}
+          </p>
+        </div>
       </header>
 
-      <Form method="get" style={formStyle}>
-        <input
-          type="text"
-          name="q"
-          defaultValue={search}
-          placeholder="Search shop domain…"
-          style={inputStyle}
-        />
-        <select name="filter" defaultValue={filter} style={selectStyle}>
-          {FILTERS.map((f) => (
-            <option key={f.key} value={f.key}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-        <select name="sort" defaultValue={sort} style={selectStyle}>
-          {SORTS.map((s) => (
-            <option key={s.key} value={s.key}>
-              Sort: {s.label}
-            </option>
-          ))}
-        </select>
-        <button type="submit" style={buttonStyle}>
-          Apply
-        </button>
-      </Form>
+      <section className="pg-section">
+        <Form method="get" className="pg-form-row">
+          <input
+            type="text"
+            name="q"
+            defaultValue={search}
+            placeholder="Search shop domain…"
+            className="pg-input"
+            style={{ flex: "1 1 240px" }}
+          />
+          <select name="filter" defaultValue={filter} className="pg-select">
+            {FILTERS.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <select name="sort" defaultValue={sort} className="pg-select">
+            {SORTS.map((s) => (
+              <option key={s.key} value={s.key}>
+                Sort: {s.label}
+              </option>
+            ))}
+          </select>
+          <button type="submit" className="pg-button pg-button--primary">
+            Apply
+          </button>
+        </Form>
+      </section>
 
-      <div style={tableStyle}>
-        <div style={tableHeaderStyle}>
-          <span style={colShop}>Shop</span>
-          <span style={colNum}>Installed</span>
-          <span style={colNum}>Uninstalled</span>
-          <span style={colNum}>Offers</span>
-          <span style={colNum}>Redemptions</span>
-          <span style={colNum}>Flags</span>
-        </div>
-        {rows.length === 0 ? (
-          <div style={emptyStyle}>No shops match these filters.</div>
-        ) : (
-          rows.map((row) => <ShopListRow key={row.id} shop={row} />)
-        )}
-      </div>
+      <section className="pg-section" style={{ padding: 0, overflow: "hidden" }}>
+        <table className="pg-table">
+          <thead>
+            <tr>
+              <th>Shop</th>
+              <th style={{ textAlign: "right" }}>Installed</th>
+              <th style={{ textAlign: "right" }}>Uninstalled</th>
+              <th style={{ textAlign: "right" }}>Offers</th>
+              <th style={{ textAlign: "right" }}>Redemptions</th>
+              <th style={{ textAlign: "right" }}>Flags</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: "center", padding: 32 }}>
+                  <span className="pg-muted">
+                    No shops match these filters.
+                  </span>
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => <ShopListRow key={row.id} shop={row} />)
+            )}
+          </tbody>
+        </table>
+      </section>
 
       {pageCount > 1 ? (
-        <nav style={paginationStyle} aria-label="Pagination">
+        <nav
+          style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: 16,
+          }}
+          aria-label="Pagination"
+        >
           {page > 1 ? (
-            <Link to={buildHref({ page: String(page - 1) })} style={pageLink}>
+            <Link to={buildHref({ page: String(page - 1) })} className="pg-link">
               ← Previous
             </Link>
           ) : (
-            <span style={{ ...pageLink, color: "#555" }}>← Previous</span>
+            <span className="pg-muted">← Previous</span>
           )}
-          <span style={subtleStyle}>
+          <span className="pg-muted">
             Page {page} of {pageCount}
           </span>
           {page < pageCount ? (
-            <Link to={buildHref({ page: String(page + 1) })} style={pageLink}>
+            <Link to={buildHref({ page: String(page + 1) })} className="pg-link">
               Next →
             </Link>
           ) : (
-            <span style={{ ...pageLink, color: "#555" }}>Next →</span>
+            <span className="pg-muted">Next →</span>
           )}
         </nav>
       ) : null}
     </div>
   );
 }
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  marginBottom: "16px",
-};
-
-const h1Style: React.CSSProperties = {
-  color: "#f0c040",
-  margin: 0,
-  fontSize: "20px",
-};
-
-const subtleStyle: React.CSSProperties = {
-  color: "#888",
-  fontSize: "12px",
-};
-
-const formStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "8px",
-  marginBottom: "16px",
-  flexWrap: "wrap",
-};
-
-const inputStyle: React.CSSProperties = {
-  flex: "1 1 240px",
-  minWidth: "200px",
-  padding: "6px 8px",
-  background: "#0f0f1a",
-  border: "1px solid #444",
-  color: "#eee",
-  fontFamily: "monospace",
-  fontSize: "13px",
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: "6px 8px",
-  background: "#0f0f1a",
-  border: "1px solid #444",
-  color: "#eee",
-  fontFamily: "monospace",
-  fontSize: "13px",
-};
-
-const buttonStyle: React.CSSProperties = {
-  padding: "6px 14px",
-  background: "#f0c040",
-  color: "#1a1a2e",
-  border: "none",
-  fontFamily: "monospace",
-  fontSize: "13px",
-  fontWeight: "bold",
-  cursor: "pointer",
-};
-
-const tableStyle: React.CSSProperties = {
-  border: "1px solid #2a2a40",
-  borderRadius: "4px",
-  background: "#1a1a2e",
-  overflow: "hidden",
-};
-
-const tableHeaderStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "2fr 1fr 1fr 0.6fr 1fr 0.8fr",
-  padding: "8px 12px",
-  background: "#0f0f1a",
-  color: "#888",
-  fontSize: "11px",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  borderBottom: "1px solid #2a2a40",
-};
-
-const colShop: React.CSSProperties = {};
-const colNum: React.CSSProperties = { textAlign: "right" };
-
-const emptyStyle: React.CSSProperties = {
-  padding: "24px",
-  textAlign: "center",
-  color: "#888",
-};
-
-const paginationStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "16px",
-  alignItems: "center",
-  justifyContent: "center",
-  marginTop: "16px",
-};
-
-const pageLink: React.CSSProperties = {
-  color: "#f0c040",
-  textDecoration: "none",
-  fontSize: "13px",
-};

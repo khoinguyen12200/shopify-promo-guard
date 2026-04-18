@@ -14,6 +14,7 @@ import { randomBytes } from "node:crypto";
 import type { Shop } from "@prisma/client";
 
 import prisma from "../db.server.js";
+import type { AdminGqlClient } from "./admin-graphql.server.js";
 import { generateDek, loadKek, wrapDek } from "./crypto.server.js";
 
 export interface EnsureShopParams {
@@ -69,4 +70,52 @@ export async function ensureShop(params: EnsureShopParams): Promise<Shop> {
   } finally {
     dek.fill(0);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shopify shop GID lookup
+// ---------------------------------------------------------------------------
+
+const SHOP_ID_QUERY = /* GraphQL */ `
+  query PromoGuardShopId {
+    shop {
+      id
+    }
+  }
+`;
+
+type ShopIdResponse = {
+  status?: number;
+  json: () => Promise<{ data?: { shop?: { id?: string } } }>;
+};
+
+/**
+ * Resolve the canonical `gid://shopify/Shop/<id>` for a shop, caching it in
+ * `Shop.shopifyShopId` on first lookup. The session's `id` is NOT the shop
+ * GID (it's the session identifier), so every mutation that uses `ownerId`
+ * (metafieldsSet, tagsAdd on shop) must go through this helper.
+ */
+export async function resolveShopGid(
+  shop: Pick<Shop, "id" | "shopDomain" | "shopifyShopId">,
+  adminClient: { graphql: AdminGqlClient },
+): Promise<string> {
+  if (shop.shopifyShopId && shop.shopifyShopId.startsWith("gid://shopify/Shop/")) {
+    return shop.shopifyShopId;
+  }
+  const call = adminClient.graphql as unknown as (
+    q: string,
+  ) => Promise<ShopIdResponse>;
+  const raw = await call(SHOP_ID_QUERY);
+  const body = await raw.json();
+  const gid = body.data?.shop?.id;
+  if (!gid || !gid.startsWith("gid://shopify/Shop/")) {
+    throw new Error(
+      `resolveShopGid(${shop.shopDomain}): Admin API returned no shop.id`,
+    );
+  }
+  await prisma.shop.update({
+    where: { id: shop.id },
+    data: { shopifyShopId: gid },
+  });
+  return gid;
 }

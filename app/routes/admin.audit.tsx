@@ -21,7 +21,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const where: Record<string, unknown> = {};
   if (action) where.action = action;
   if (email) {
-    where.adminUser = { email: { contains: email.toLowerCase() } };
+    const needle = email.toLowerCase();
+    where.OR = [
+      { adminEmail: { contains: needle } },
+      { adminUser: { email: { contains: needle } } },
+    ];
   }
 
   const [rows, total] = await Promise.all([
@@ -37,6 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         targetId: true,
         metadata: true,
         createdAt: true,
+        adminEmail: true,
         adminUser: { select: { email: true } },
       },
     }),
@@ -50,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       target: r.targetType && r.targetId ? `${r.targetType}/${r.targetId}` : "",
       metadata: r.metadata,
       createdAt: r.createdAt.toISOString(),
-      adminEmail: r.adminUser?.email ?? "(system)",
+      adminEmail: r.adminEmail ?? r.adminUser?.email ?? "(system)",
     })),
     total,
     page,

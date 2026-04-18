@@ -19,7 +19,6 @@ export interface ShopListRowData {
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  // Short, unambiguous form for ops use: "Apr 15 2026".
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "2-digit",
@@ -31,68 +30,33 @@ export function ShopListRow({ shop }: { shop: ShopListRowData }) {
   const isActive = shop.uninstalledAt === null;
 
   return (
-    <Link
-      to={`/admin/shops/${shop.id}`}
-      style={rowStyle}
-      prefetch="intent"
-    >
-      <span style={shopCellStyle}>
-        <span style={domainStyle}>{shop.shopDomain}</span>
-        <span style={tagsStyle}>
-          {isActive ? (
-            <span style={{ ...tagStyle, color: "#8fd18f" }}>active</span>
-          ) : (
-            <span style={{ ...tagStyle, color: "#f88" }}>uninstalled</span>
-          )}
+    <tr>
+      <td>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link to={`/admin/shops/${shop.id}`} className="pg-link" prefetch="intent">
+            {shop.shopDomain}
+          </Link>
+          <span
+            className={
+              "pg-badge " +
+              (isActive ? "pg-badge--success" : "pg-badge--critical")
+            }
+          >
+            {isActive ? "Active" : "Uninstalled"}
+          </span>
           {shop.protectedDataLevel > 0 ? (
-            <span style={tagStyle}>L{shop.protectedDataLevel}</span>
+            <span className="pg-badge">L{shop.protectedDataLevel}</span>
           ) : null}
-        </span>
-      </span>
-      <span style={numCellStyle}>{formatDate(shop.installedAt)}</span>
-      <span style={numCellStyle}>{formatDate(shop.uninstalledAt)}</span>
-      <span style={numCellStyle}>{shop.offerCount}</span>
-      <span style={numCellStyle}>{shop.redemptionCount.toLocaleString()}</span>
-      <span style={numCellStyle}>{shop.flagCount.toLocaleString()}</span>
-    </Link>
+        </div>
+      </td>
+      <td style={numCellStyle}>{formatDate(shop.installedAt)}</td>
+      <td style={numCellStyle}>{formatDate(shop.uninstalledAt)}</td>
+      <td style={numCellStyle}>{shop.offerCount}</td>
+      <td style={numCellStyle}>{shop.redemptionCount.toLocaleString()}</td>
+      <td style={numCellStyle}>{shop.flagCount.toLocaleString()}</td>
+    </tr>
   );
 }
-
-const rowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "2fr 1fr 1fr 0.6fr 1fr 0.8fr",
-  padding: "10px 12px",
-  borderBottom: "1px solid #2a2a40",
-  color: "#eee",
-  textDecoration: "none",
-  fontSize: "13px",
-  alignItems: "center",
-};
-
-const shopCellStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  minWidth: 0,
-};
-
-const domainStyle: React.CSSProperties = {
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const tagsStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "6px",
-};
-
-const tagStyle: React.CSSProperties = {
-  fontSize: "10px",
-  color: "#aaa",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-};
 
 const numCellStyle: React.CSSProperties = {
   textAlign: "right",

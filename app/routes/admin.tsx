@@ -4,70 +4,66 @@
  */
 
 import type { LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData, Link, NavLink } from "react-router";
+import { Outlet, useLoaderData, Form, NavLink } from "react-router";
 import { requireAdminSession } from "../lib/admin-auth.server.js";
+import adminStyles from "../styles/admin.css?url";
+
+export const links = () => [{ rel: "stylesheet", href: adminStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const adminUser = await requireAdminSession(request);
   return { email: adminUser.email };
 };
 
+const NAV: Array<{ to: string; label: string; end?: boolean }> = [
+  { to: "/admin", label: "Dashboard", end: true },
+  { to: "/admin/shops", label: "Shops" },
+  { to: "/admin/jobs", label: "Jobs" },
+  { to: "/admin/dead-letters", label: "Dead-letters" },
+  { to: "/admin/compliance", label: "Compliance" },
+  { to: "/admin/feature-flags", label: "Feature flags" },
+  { to: "/admin/audit", label: "Audit" },
+];
+
 export default function AdminLayout() {
   const { email } = useLoaderData<typeof loader>();
 
   return (
-    <div style={{ fontFamily: "monospace", fontSize: "14px" }}>
-      <nav
-        style={{
-          background: "#1a1a2e",
-          color: "#eee",
-          padding: "8px 16px",
-          display: "flex",
-          gap: "16px",
-          alignItems: "center",
-        }}
-      >
-        <strong style={{ color: "#f0c040", marginRight: "16px" }}>
-          Promo Guard — Platform
-        </strong>
-        <NavLink to="/admin" end style={navStyle}>
-          Dashboard
-        </NavLink>
-        <NavLink to="/admin/shops" style={navStyle}>
-          Shops
-        </NavLink>
-        <NavLink to="/admin/jobs" style={navStyle}>
-          Jobs
-        </NavLink>
-        <NavLink to="/admin/dead-letters" style={navStyle}>
-          Dead-letters
-        </NavLink>
-        <NavLink to="/admin/compliance" style={navStyle}>
-          Compliance
-        </NavLink>
-        <NavLink to="/admin/feature-flags" style={navStyle}>
-          Feature flags
-        </NavLink>
-        <NavLink to="/admin/audit" style={navStyle}>
-          Audit
-        </NavLink>
-        <span style={{ marginLeft: "auto", color: "#aaa", fontSize: "12px" }}>
-          {email}
-        </span>
-        <Link to="/admin/logout" style={{ color: "#f88", fontSize: "12px" }}>
-          Logout
-        </Link>
-      </nav>
-      <div style={{ padding: "16px" }}>
+    <div className="pg-admin">
+      <header className="pg-admin__header">
+        <div className="pg-admin__brand">
+          <span className="pg-admin__dot" />
+          Promo Guard <span className="pg-admin__brand-sub">Platform</span>
+        </div>
+        <nav className="pg-admin__nav" aria-label="Platform admin">
+          {NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                "pg-admin__nav-link" +
+                (isActive ? " pg-admin__nav-link--active" : "")
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="pg-admin__user">
+          <span className="pg-admin__email" title={email}>
+            {email}
+          </span>
+          <Form method="post" action="/admin/logout">
+            <button type="submit" className="pg-admin__logout">
+              Sign out
+            </button>
+          </Form>
+        </div>
+      </header>
+      <main className="pg-admin__main">
         <Outlet />
-      </div>
+      </main>
     </div>
   );
-}
-
-function navStyle({ isActive }: { isActive: boolean }): React.CSSProperties {
-  return {
-    color: isActive ? "#f0c040" : "#ccc",
-    textDecoration: "none",
-  };
 }

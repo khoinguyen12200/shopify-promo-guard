@@ -31,6 +31,7 @@ import {
   emailTrigrams,
 } from "../lib/normalize/email.server.js";
 import { canonicalPhone } from "../lib/normalize/phone.server.js";
+import { resolveShopGid } from "../lib/shop.server.js";
 import {
   mergeEntry,
   newShard,
@@ -227,10 +228,11 @@ export const handleRotateSalt: JobHandler<unknown> = async (payload, ctx) => {
     });
 
     // Rebuild the shop-wide shard metafield from the now-refreshed rows.
-    const { admin, session } = await unauthenticated.admin(shop.shopDomain);
+    const { admin } = await unauthenticated.admin(shop.shopDomain);
+    const shopGid = await resolveShopGid(shop, admin);
     const creds = {
       shopDomain: shop.shopDomain,
-      shopGid: `gid://shopify/Shop/${session.id}`,
+      shopGid,
     };
 
     const refreshed = await prisma.redemptionRecord.findMany({

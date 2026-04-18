@@ -67,11 +67,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const fieldErrors: FieldErrors = {};
   if (!name) fieldErrors.name = "Name is required.";
-  if (
-    modeRaw !== "silent_strip" &&
-    modeRaw !== "block" &&
-    modeRaw !== "flag_only"
-  ) {
+  if (modeRaw !== "silent_strip" && modeRaw !== "block") {
     fieldErrors.mode = "Invalid mode.";
   }
   if (Object.keys(fieldErrors).length > 0) {
@@ -82,7 +78,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     offerId: id,
     shopId: shop.id,
     name,
-    mode: modeRaw as "silent_strip" | "block" | "flag_only",
+    mode: modeRaw as "silent_strip" | "block",
   });
 
   return redirect(`/app/offers/${id}`);
@@ -135,47 +131,19 @@ export default function EditOffer() {
         </s-section>
 
         <s-section heading="What happens when someone reuses this offer?">
-          <s-stack gap="base">
-            <s-stack direction="inline" gap="small" alignItems="start">
-              <input
-                type="radio"
-                id="mode-silent"
-                name="mode"
-                value="silent_strip"
-                checked={mode === "silent_strip"}
-                onChange={() => setMode("silent_strip")}
-              />
-              <label htmlFor="mode-silent">
-                <s-text>Silently don&apos;t apply the discount</s-text>
-              </label>
-            </s-stack>
-            <s-stack direction="inline" gap="small" alignItems="start">
-              <input
-                type="radio"
-                id="mode-block"
-                name="mode"
-                value="block"
-                checked={mode === "block"}
-                onChange={() => setMode("block")}
-              />
-              <label htmlFor="mode-block">
-                <s-text>Block their checkout</s-text>
-              </label>
-            </s-stack>
-            <s-stack direction="inline" gap="small" alignItems="start">
-              <input
-                type="radio"
-                id="mode-flag"
-                name="mode"
-                value="flag_only"
-                checked={mode === "flag_only"}
-                onChange={() => setMode("flag_only")}
-              />
-              <label htmlFor="mode-flag">
-                <s-text>Flag for review only (no action)</s-text>
-              </label>
-            </s-stack>
-          </s-stack>
+          <s-choice-list
+            name="mode"
+            values={[mode]}
+            onChange={(e) => {
+              const value = (e.target as HTMLInputElement | null)?.value;
+              if (value) setMode(value);
+            }}
+          >
+            <s-choice value="silent_strip">
+              Silently don&apos;t apply the discount
+            </s-choice>
+            <s-choice value="block">Block their checkout</s-choice>
+          </s-choice-list>
           {fieldErrors?.mode ? (
             <s-banner tone="critical">{fieldErrors.mode}</s-banner>
           ) : null}

@@ -17,6 +17,11 @@ export interface LogAdminActionParams {
    * a disallowed email — we still want the attempt trail).
    */
   adminUserId?: string | null;
+  /**
+   * Denormalised admin email (spec §17). Preserved even if the AdminUser row
+   * is later deleted so the audit trail stays attributable.
+   */
+  adminEmail?: string | null;
   /** Short verb, lowercase + underscored: "login", "view_pii", "impersonate". */
   action: string;
   targetType?: string;
@@ -31,6 +36,9 @@ export interface LogAdminActionParams {
  * Write one AdminAuditLog row. Swallows errors at the boundary of a "fire and
  * forget" audit write — a logging failure must never break the user-facing
  * action. We log to stderr so an operator still notices.
+ *
+ * When `adminEmail` isn't passed but `adminUserId` is, the email is hydrated
+ * from the DB so callers can stay concise.
  */
 export async function logAdminAction(params: LogAdminActionParams): Promise<void> {
   const {
@@ -42,11 +50,20 @@ export async function logAdminAction(params: LogAdminActionParams): Promise<void
     ipAddress,
     userAgent,
   } = params;
+  let { adminEmail } = params;
 
   try {
+    if (!adminEmail && adminUserId) {
+      const u = await prisma.adminUser.findUnique({
+        where: { id: adminUserId },
+        select: { email: true },
+      });
+      adminEmail = u?.email ?? null;
+    }
     await prisma.adminAuditLog.create({
       data: {
         adminUserId: adminUserId ?? null,
+        adminEmail: adminEmail ?? null,
         action,
         targetType: targetType ?? null,
         targetId: targetId ?? null,

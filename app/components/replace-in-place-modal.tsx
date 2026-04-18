@@ -14,30 +14,36 @@ export function ReplaceInPlaceModal({
   onConfirm,
   onCancel,
 }: ReplaceInPlaceModalProps) {
-  const quoted = codes.map((c) => `"${c}"`).join(codes.length === 2 ? " and " : ", ");
+  const quoted = codes
+    .map((c) => `"${c}"`)
+    .join(codes.length === 2 ? " and " : ", ");
   return (
     <s-banner tone="warning" heading="Replace your existing discount?">
       <s-stack gap="base">
-        <s-text>
+        <s-paragraph>
           To silently skip the discount for abusers, we need to replace{" "}
           {quoted} with protected {codes.length === 1 ? "version" : "versions"}.
-        </s-text>
-        <s-stack gap="small">
-          <s-text>
-            ✓ Codes stay the same — links in your emails keep working
-          </s-text>
-          <s-text>✓ Discount amount, minimum, dates, limits all copied</s-text>
-          <s-text>
-            ✓ Old discounts are archived (you can restore them anytime)
-          </s-text>
-          <s-text>⚠ Analytics for these codes reset</s-text>
-        </s-stack>
-        <s-stack direction="inline" gap="small">
+        </s-paragraph>
+        <s-unordered-list>
+          <s-list-item>
+            Codes stay the same — links in your emails keep working.
+          </s-list-item>
+          <s-list-item>
+            Discount amount, minimum, dates, and limits are all copied.
+          </s-list-item>
+          <s-list-item>
+            Old discounts are archived — you can restore them anytime.
+          </s-list-item>
+          <s-list-item>
+            <s-text type="strong">Analytics for these codes reset.</s-text>
+          </s-list-item>
+        </s-unordered-list>
+        <s-button-group gap="base">
           <s-button onClick={onCancel}>Cancel</s-button>
           <s-button variant="primary" onClick={onConfirm}>
             Replace &amp; protect
           </s-button>
-        </s-stack>
+        </s-button-group>
       </s-stack>
     </s-banner>
   );

@@ -114,46 +114,24 @@ export function OfferForm({
       </s-section>
 
       <s-section heading="What happens when someone reuses this offer?">
-        <s-stack gap="base">
-          <s-stack direction="inline" gap="small" alignItems="start">
-            <input
-              type="radio"
-              id="mode-silent"
-              name="mode"
-              value="silent_strip"
-              checked={mode === "silent_strip"}
-              onChange={() => setMode("silent_strip")}
-            />
-            <s-stack gap="small">
-              <label htmlFor="mode-silent">
-                <s-text>Silently don&apos;t apply the discount (recommended)</s-text>
-              </label>
-              <s-text color="subdued">
-                The customer can still check out — they just don&apos;t get the
-                discount. Works best for most stores.
-              </s-text>
-            </s-stack>
-          </s-stack>
-          <s-stack direction="inline" gap="small" alignItems="start">
-            <input
-              type="radio"
-              id="mode-block"
-              name="mode"
-              value="block"
-              checked={mode === "block"}
-              onChange={() => setMode("block")}
-            />
-            <s-stack gap="small">
-              <label htmlFor="mode-block">
-                <s-text>Block their checkout</s-text>
-              </label>
-              <s-text color="subdued">
-                Stops the checkout with an error message. Stronger, but can
-                frustrate legitimate customers.
-              </s-text>
-            </s-stack>
-          </s-stack>
-        </s-stack>
+        <s-choice-list
+          name="mode"
+          values={[mode]}
+          onChange={(e) => {
+            const value = (e.target as HTMLInputElement | null)?.value;
+            if (value === "silent_strip" || value === "block") setMode(value);
+          }}
+        >
+          <s-choice value="silent_strip">
+            Silently don&apos;t apply the discount (recommended)
+          </s-choice>
+          <s-choice value="block">Block their checkout</s-choice>
+        </s-choice-list>
+        <s-paragraph tone="neutral" color="subdued">
+          {mode === "silent_strip"
+            ? "The customer can still check out — they just don't get the discount. Works best for most stores."
+            : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
+        </s-paragraph>
       </s-section>
 
       <s-section>

@@ -37,6 +37,7 @@ import {
 import { canonicalPhone } from "../lib/normalize/phone.server.js";
 import { computeSketch } from "../lib/minhash.server.js";
 import { hashForLookup, hashToHex } from "../lib/hash.server.js";
+import { resolveShopGid } from "../lib/shop.server.js";
 import { unauthenticated } from "../shopify.server.js";
 
 // ---------------------------------------------------------------------------
@@ -361,7 +362,7 @@ interface InsertArgs {
   codeUsed: string;
   order: OrderNode;
   dek: Buffer;
-  sessionId: string;
+  shopGid: string;
 }
 
 /**
@@ -369,7 +370,7 @@ interface InsertArgs {
  * Existing rows short-circuit so repeated cold-start runs are idempotent.
  */
 async function backfillOrder(args: InsertArgs): Promise<boolean> {
-  const { shop, protectedOfferId, codeUsed, order, dek, sessionId } = args;
+  const { shop, protectedOfferId, codeUsed, order, dek, shopGid } = args;
 
   // Idempotency: skip orders we already have for this (shop, offer).
   const existing = await prisma.redemptionRecord.findUnique({
@@ -419,7 +420,7 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
     type: "shard_append",
     payload: {
       shopDomain: shop.shopDomain,
-      shopGid: `gid://shopify/Shop/${sessionId}`,
+      shopGid,
       saltHex: shop.salt,
       defaultCountryCc: null,
       entry: {
@@ -482,7 +483,8 @@ export const handleColdStart: JobHandler<unknown> = async (payload, ctx) => {
     });
   }
 
-  const { admin, session } = await unauthenticated.admin(shop.shopDomain);
+  const { admin } = await unauthenticated.admin(shop.shopDomain);
+  const shopGid = await resolveShopGid(shop, admin);
   const kek = loadKek();
   const dek = unwrapDek(shop.encryptionKey, kek);
 
@@ -520,7 +522,7 @@ export const handleColdStart: JobHandler<unknown> = async (payload, ctx) => {
             codeUsed: code,
             order: edge.node,
             dek,
-            sessionId: session.id,
+            shopGid,
           });
           if (inserted) {
             backfilledThisRun++;

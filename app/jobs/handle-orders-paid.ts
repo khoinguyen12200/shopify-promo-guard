@@ -37,6 +37,7 @@ import {
 import { canonicalPhone } from "../lib/normalize/phone.server.js";
 import { computeSketch } from "../lib/minhash.server.js";
 import { scorePostOrder } from "../lib/scoring/score.server.js";
+import { resolveShopGid } from "../lib/shop.server.js";
 import { unauthenticated } from "../shopify.server.js";
 
 // ---------------------------------------------------------------------------
@@ -158,7 +159,8 @@ export const handleOrdersPaid: JobHandler<unknown> = async (payload, ctx) => {
   }
 
   // 3. Open admin client + decrypt DEK once for the duration of this handler.
-  const { admin, session } = await unauthenticated.admin(shop.shopDomain);
+  const { admin } = await unauthenticated.admin(shop.shopDomain);
+  const shopGid = await resolveShopGid(shop, admin);
   const kek = loadKek();
   const dek = unwrapDek(shop.encryptionKey, kek);
 
@@ -173,7 +175,7 @@ export const handleOrdersPaid: JobHandler<unknown> = async (payload, ctx) => {
         oname,
         dek,
         adminClient: admin,
-        sessionId: session.id,
+        shopGid,
       });
     }
   } finally {
@@ -190,7 +192,7 @@ interface ProcessArgs {
   oname: string;
   dek: Buffer;
   adminClient: { graphql: unknown };
-  sessionId: string;
+  shopGid: string;
 }
 
 async function processOfferMatch(args: ProcessArgs): Promise<void> {
@@ -371,7 +373,7 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
     type: "shard_append",
     payload: {
       shopDomain: shop.shopDomain,
-      shopGid: `gid://shopify/Shop/${args.sessionId}`,
+      shopGid: args.shopGid,
       saltHex: shop.salt,
       defaultCountryCc: null,
       entry: {

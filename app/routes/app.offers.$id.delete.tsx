@@ -124,45 +124,26 @@ export default function DeleteOffer() {
             )}
 
             {hasReplaced ? (
-              <s-stack gap="small">
-                <s-stack direction="inline" gap="small" alignItems="start">
-                  <input
-                    type="radio"
-                    id="choice-restore"
-                    name="choice"
-                    value="restore"
-                    checked={choice === "restore"}
-                    onChange={() => setChoice("restore")}
-                  />
-                  <s-stack gap="small">
-                    <label htmlFor="choice-restore">
-                      <s-text>
-                        Restore your original {replacedCodes.join(", ")}
-                      </s-text>
-                    </label>
-                    <s-text color="subdued">
-                      Unprotected, native Shopify versions from before
-                    </s-text>
-                  </s-stack>
-                </s-stack>
-                <s-stack direction="inline" gap="small" alignItems="start">
-                  <input
-                    type="radio"
-                    id="choice-delete"
-                    name="choice"
-                    value="delete"
-                    checked={choice === "delete"}
-                    onChange={() => setChoice("delete")}
-                  />
-                  <s-stack gap="small">
-                    <label htmlFor="choice-delete">
-                      <s-text>Delete the codes entirely</s-text>
-                    </label>
-                    <s-text color="subdued">
-                      Links using these codes will stop working.
-                    </s-text>
-                  </s-stack>
-                </s-stack>
+              <s-stack gap="base">
+                <s-choice-list
+                  name="choice"
+                  values={[choice]}
+                  onChange={(e) => {
+                    const value = (e.target as HTMLInputElement | null)?.value;
+                    if (value === "restore" || value === "delete")
+                      setChoice(value);
+                  }}
+                >
+                  <s-choice value="restore">
+                    Restore your original {replacedCodes.join(", ")}
+                  </s-choice>
+                  <s-choice value="delete">Delete the codes entirely</s-choice>
+                </s-choice-list>
+                <s-paragraph tone="neutral" color="subdued">
+                  {choice === "restore"
+                    ? "Unprotected, native Shopify versions from before."
+                    : "Links using these codes will stop working."}
+                </s-paragraph>
               </s-stack>
             ) : (
               <input type="hidden" name="choice" value="delete" />

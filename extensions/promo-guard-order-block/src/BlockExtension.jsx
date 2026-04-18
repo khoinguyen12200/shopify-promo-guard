@@ -76,9 +76,10 @@ function Extension() {
   }
 
   function onCancelOrder() {
-    // Deep-link to Shopify's native order-cancel flow. T41 keeps this as a
-    // navigation hand-off; the merchant completes cancellation in the admin.
-    const numericId = flagged.id.split("/").pop() ?? "";
+    // Deep-link to Shopify's native order-cancel flow. Use the Shopify order
+    // GID from the block's own context — `flagged.id` is the FlaggedOrder row
+    // PK, not the Shopify order.
+    const numericId = orderGid ? orderGid.split("/").pop() : null;
     if (numericId && shopify?.navigate) {
       shopify.navigate(`shopify:admin/orders/${numericId}`);
     }

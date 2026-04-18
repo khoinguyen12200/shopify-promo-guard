@@ -487,7 +487,7 @@ export interface UpdateOfferFieldsInput {
   offerId: string;
   shopId: string;
   name?: string;
-  mode?: "silent_strip" | "block" | "flag_only";
+  mode?: "silent_strip" | "block";
 }
 
 /**

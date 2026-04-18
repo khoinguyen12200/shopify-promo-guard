@@ -129,9 +129,22 @@ export async function verifyMagicLink(
   return sessionToken;
 }
 
+/** Best-effort client IP extraction honouring standard reverse-proxy headers. */
+export function getRequestIp(request: Request): string | null {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0]!.trim();
+  return (
+    request.headers.get("x-real-ip") ??
+    request.headers.get("cf-connecting-ip") ??
+    null
+  );
+}
+
 /**
  * Read the session cookie from a request, validate it, and return the AdminUser.
- * Throws a redirect to /admin/login if the session is missing or invalid.
+ * Throws a redirect to /admin/login if the session is missing, invalid, or the
+ * client IP doesn't match the IP the session was created from (IP pinning,
+ * spec §18).
  */
 export async function requireAdminSession(request: Request) {
   const cookie = request.headers.get("Cookie") ?? "";
@@ -153,7 +166,34 @@ export async function requireAdminSession(request: Request) {
     throw redirect("/admin/login");
   }
 
+  // IP pinning (spec §18). If the session recorded an IP and the current
+  // request IP can be determined, they must match. If either side is
+  // missing (local dev without proxy headers), skip the check rather than
+  // lock out developers — production runs behind a proxy that always sets
+  // x-forwarded-for.
+  const currentIp = getRequestIp(request);
+  if (session.ipAddress && currentIp && session.ipAddress !== currentIp) {
+    // Revoke the session so a stolen cookie can't be reused from another IP.
+    await prisma.adminSession.update({
+      where: { id: session.id },
+      data: { revokedAt: now },
+    });
+    throw redirect("/admin/login");
+  }
+
   return session.adminUser;
+}
+
+/** Revoke an admin session by cookie token. Used by /admin/logout. */
+export async function revokeAdminSession(request: Request): Promise<void> {
+  const cookie = request.headers.get("Cookie") ?? "";
+  const sessionToken = parseCookie(cookie, SESSION_COOKIE);
+  if (!sessionToken) return;
+  const tokenHash = hmacToken(sessionToken);
+  await prisma.adminSession.updateMany({
+    where: { tokenHash, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
 }
 
 /** Build a Set-Cookie header value for the admin session. */

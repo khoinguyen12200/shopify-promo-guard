@@ -15,13 +15,14 @@ datasource db {
 // -----------------------------------------------------------------------------
 
 model Shop {
-  id            String   @id @default(cuid())
-  shopDomain    String   @unique
-  accessToken   String
-  scope         String
-  salt          String
-  saltVersion   Int      @default(1)
-  encryptionKey String
+  id             String   @id @default(cuid())
+  shopDomain     String   @unique
+  shopifyShopId  String?
+  accessToken    String
+  scope          String
+  salt           String
+  saltVersion    Int      @default(1)
+  encryptionKey  String
 
   retentionDays       Int     @default(365)
   protectedDataLevel  Int     @default(0)
@@ -358,6 +359,7 @@ model MagicLink {
 model AdminAuditLog {
   id          String   @id @default(cuid())
   adminUserId String?
+  adminEmail  String?
   action      String
   targetType  String?
   targetId    String?
@@ -370,6 +372,7 @@ model AdminAuditLog {
 
   @@index([adminUserId, createdAt])
   @@index([action, createdAt])
+  @@index([adminEmail, createdAt])
 }
 
 model FeatureFlag {

@@ -90,6 +90,11 @@ export default function Onboarding() {
       <s-section heading="Setup checklist">
         <SetupChecklist items={items} />
       </s-section>
+      <s-section>
+        <s-stack direction="inline" gap="base">
+          <s-button href="/app/offers">Skip — I&apos;ll set up later</s-button>
+        </s-stack>
+      </s-section>
     </s-page>
   );
 }

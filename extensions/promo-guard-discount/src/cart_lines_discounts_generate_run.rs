@@ -50,7 +50,7 @@ fn cart_lines_discounts_generate_run(
     let email_hash = buyer_opt
         .and_then(|b| b.email())
         .and_then(|raw| canonical_email(raw.as_str()))
-        .map(|c| hash_for_lookup("email", c.as_bytes(), salt));
+        .map(|c| hash_for_lookup("email_canonical", c.as_bytes(), salt));
 
     let phone_hash = buyer_opt
         .and_then(|b| b.phone())
@@ -70,10 +70,10 @@ fn cart_lines_discounts_generate_run(
 
     let address_full_hash = addr_struct
         .as_ref()
-        .map(|a| hash_for_lookup("address_full", full_key(a).as_bytes(), salt));
+        .map(|a| hash_for_lookup("addr_full", full_key(a).as_bytes(), salt));
     let address_house_hash = addr_struct
         .as_ref()
-        .map(|a| hash_for_lookup("address_house", house_key(a).as_bytes(), salt));
+        .map(|a| hash_for_lookup("addr_house", house_key(a).as_bytes(), salt));
 
     let customer_redeemed_tag = buyer_opt
         .and_then(|b| b.customer())

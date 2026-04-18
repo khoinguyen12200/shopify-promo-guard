@@ -67,6 +67,7 @@ const ctx = {
 const SHOP = {
   id: "shop-1",
   shopDomain: "test.myshopify.com",
+  shopifyShopId: "gid://shopify/Shop/1",
   salt: "00".repeat(32),
   encryptionKey: "wrapped",
 };

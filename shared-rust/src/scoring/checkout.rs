@@ -77,16 +77,37 @@ pub struct ScoreResult {
 // MinHash helper
 // ---------------------------------------------------------------------------
 
-/// Count how many bands are identical between two 4-band MinHash sketches.
+/// Count Jaccard-intersection size (0–4) between two bottom-K MinHash sketches.
 ///
-/// This is `jaccard_count` from scoring-spec.md §4.3/4.6.  Range: 0–4.
+/// Matches `crate::minhash::jaccard_estimate` but returns the integer count
+/// (`jaccard * 4`) so callers can threshold against discrete tiers.
 ///
-/// Inlined here so this scoring module stays self-contained — the canonical
-/// implementation lives at `crate::minhash::jaccard_count`, which is a pure
-/// band-by-band equality check that we re-state rather than take a dep on.
+/// Algorithm (spec §6): union the two sketches, take the 4 smallest values,
+/// count how many of those appear in BOTH sketches.
 #[inline]
 fn jaccard_count(a: &[u32; 4], b: &[u32; 4]) -> usize {
-    a.iter().zip(b.iter()).filter(|(x, y)| x == y).count()
+    let mut union: [u32; 8] = [0; 8];
+    union[..4].copy_from_slice(a);
+    union[4..].copy_from_slice(b);
+    union.sort_unstable();
+    // dedup in place, tracking new length
+    let mut n = 0usize;
+    for i in 0..union.len() {
+        if n == 0 || union[n - 1] != union[i] {
+            union[n] = union[i];
+            n += 1;
+        }
+    }
+    let take = n.min(4);
+    let mut count = 0usize;
+    for v in &union[..take] {
+        let in_a = a.iter().any(|x| x == v);
+        let in_b = b.iter().any(|x| x == v);
+        if in_a && in_b {
+            count += 1;
+        }
+    }
+    count
 }
 
 /// Best overlap (0–4) across a collection of stored sketches.

@@ -24,6 +24,7 @@ import {
   type Shard,
   type ShardEntry,
 } from "../lib/shards.server.js";
+import { resolveShopGid } from "../lib/shop.server.js";
 import { unauthenticated } from "../shopify.server.js";
 
 export interface ComplianceCustomerRedactPayload {
@@ -169,10 +170,11 @@ export const complianceCustomerRedactHandler: JobHandler<unknown> = async (
   }
 
   try {
-    const { admin, session } = await unauthenticated.admin(shop.shopDomain);
+    const { admin } = await unauthenticated.admin(shop.shopDomain);
+    const shopGid = await resolveShopGid(shop, admin);
     const creds = {
       shopDomain: shop.shopDomain,
-      shopGid: `gid://shopify/Shop/${session.id}`,
+      shopGid,
     };
 
     // Pull every RedemptionRecord for the shop (not just the redacted

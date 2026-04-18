@@ -79,42 +79,40 @@ export function CreateNewDiscount({
 
         <s-stack gap="small">
           <s-heading>Amount</s-heading>
-          <s-stack direction="inline" gap="base" alignItems="center">
-            <input
-              type="radio"
-              id="amount-percent"
-              checked={amountKind === "percentage"}
-              onChange={() => setAmountKind("percentage")}
-            />
-            <label htmlFor="amount-percent">
-              <s-text>Percentage</s-text>
-            </label>
-            <s-text-field
+          <s-choice-list
+            name="amount-kind"
+            values={[amountKind]}
+            onChange={(e) => {
+              const value = (e.target as HTMLInputElement | null)?.value;
+              if (value === "percentage" || value === "fixed")
+                setAmountKind(value);
+            }}
+          >
+            <s-choice value="percentage">Percentage</s-choice>
+            <s-choice value="fixed">Fixed amount</s-choice>
+          </s-choice-list>
+          {amountKind === "percentage" ? (
+            <s-number-field
               name="percent-input"
-              label="%"
+              label="Percentage off"
               value={percent}
-              disabled={amountKind !== "percentage"}
-              onChange={(e) => setPercent(e.currentTarget.value)}
+              min={1}
+              max={99}
+              onChange={(e: { currentTarget: { value: string } }) =>
+                setPercent(e.currentTarget.value)
+              }
             />
-          </s-stack>
-          <s-stack direction="inline" gap="base" alignItems="center">
-            <input
-              type="radio"
-              id="amount-fixed"
-              checked={amountKind === "fixed"}
-              onChange={() => setAmountKind("fixed")}
-            />
-            <label htmlFor="amount-fixed">
-              <s-text>Fixed amount</s-text>
-            </label>
-            <s-text-field
+          ) : (
+            <s-money-field
               name="fixed-input"
-              label="$"
+              label="Fixed amount"
               value={fixed}
-              disabled={amountKind !== "fixed"}
-              onChange={(e) => setFixed(e.currentTarget.value)}
+              min={0}
+              onChange={(e: { currentTarget: { value: string } }) =>
+                setFixed(e.currentTarget.value)
+              }
             />
-          </s-stack>
+          )}
         </s-stack>
 
         <s-stack gap="small">
@@ -125,21 +123,22 @@ export function CreateNewDiscount({
             checked={oncePerCustomer}
             onChange={(e) => setOncePerCustomer(e.currentTarget.checked)}
           />
-          <s-stack direction="inline" gap="base" alignItems="center">
-            <s-checkbox
-              name="has-expiry"
+          <s-checkbox
+            name="has-expiry"
+            label="Set an expiry date"
+            checked={hasEndsAt}
+            onChange={(e) => setHasEndsAt(e.currentTarget.checked)}
+          />
+          {hasEndsAt ? (
+            <s-date-field
+              name="ends-at"
               label="Expires on"
-              checked={hasEndsAt}
-              onChange={(e) => setHasEndsAt(e.currentTarget.checked)}
-            />
-            <input
-              type="date"
-              aria-label="Expiry date"
               value={endsAt}
-              disabled={!hasEndsAt}
-              onChange={(e) => setEndsAt(e.currentTarget.value)}
+              onChange={(e: { currentTarget: { value: string } }) =>
+                setEndsAt(e.currentTarget.value)
+              }
             />
-          </s-stack>
+          ) : null}
         </s-stack>
 
         <s-stack direction="inline" gap="small">

@@ -95,16 +95,16 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      <header style={headerStyle}>
-        <h1 style={h1Style}>Dashboard</h1>
-        <span style={timestampStyle}>
-          Generated {new Date(generatedAt).toLocaleString()}
-        </span>
+      <header className="pg-page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p>Generated {new Date(generatedAt).toLocaleString()}</p>
+        </div>
       </header>
 
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>Last 24 hours</h2>
-        <div style={gridStyle}>
+      <section className="pg-section">
+        <h2>Last 24 hours</h2>
+        <div className="pg-grid">
           <DashboardCard label="Installs" value={numbers.installs24h} />
           <DashboardCard label="Uninstalls" value={numbers.uninstalls24h} />
           <DashboardCard
@@ -116,7 +116,7 @@ export default function AdminDashboard() {
             value={numbers.postOrderFlagged24h}
           />
           <DashboardCard
-            label="Webhook failures (24h)"
+            label="Webhook failures"
             value={numbers.webhookFailures24h}
             emphasise={numbers.webhookFailures24h > 0}
           />
@@ -128,9 +128,9 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>Health</h2>
-        <div style={gridStyle}>
+      <section className="pg-section">
+        <h2>Health</h2>
+        <div className="pg-grid">
           <DashboardCard
             label="Job queue — pending"
             value={numbers.jobsPending}
@@ -146,9 +146,9 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <h2 style={h2Style}>Compliance queue</h2>
-        <div style={gridStyle}>
+      <section className="pg-section">
+        <h2>Compliance queue</h2>
+        <div className="pg-grid">
           <DashboardCard
             label="Pending data_request"
             value={numbers.pendingDataRequests}
@@ -167,15 +167,15 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      <section style={sectionStyle}>
-        <div style={linkRowStyle}>
-          <Link to="/admin/dead-letters" style={linkStyle}>
+      <section className="pg-section">
+        <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+          <Link to="/admin/dead-letters" className="pg-link">
             Jump to dead-letters →
           </Link>
-          <Link to="/admin/compliance" style={linkStyle}>
+          <Link to="/admin/compliance" className="pg-link">
             Jump to compliance →
           </Link>
-          <Link to="/admin/shops" style={linkStyle}>
+          <Link to="/admin/shops" className="pg-link">
             Browse shops →
           </Link>
         </div>
@@ -183,51 +183,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "baseline",
-  justifyContent: "space-between",
-  marginBottom: "24px",
-};
-
-const h1Style: React.CSSProperties = {
-  color: "#f0c040",
-  margin: 0,
-  fontSize: "20px",
-};
-
-const h2Style: React.CSSProperties = {
-  color: "#ccc",
-  fontSize: "14px",
-  margin: "0 0 8px 0",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-};
-
-const timestampStyle: React.CSSProperties = {
-  color: "#888",
-  fontSize: "12px",
-};
-
-const sectionStyle: React.CSSProperties = {
-  marginBottom: "24px",
-};
-
-const gridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-  gap: "12px",
-};
-
-const linkRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: "16px",
-  flexWrap: "wrap",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "#f0c040",
-  textDecoration: "none",
-  fontSize: "14px",
-};

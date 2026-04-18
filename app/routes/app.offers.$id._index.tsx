@@ -38,7 +38,6 @@ function statusBadge(offer: {
 function modeLabel(mode: string) {
   if (mode === "block") return "Block at checkout";
   if (mode === "silent_strip") return "Silent strip";
-  if (mode === "flag_only") return "Flag for review";
   return mode;
 }
 
