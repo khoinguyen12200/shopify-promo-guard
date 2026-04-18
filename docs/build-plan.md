@@ -654,7 +654,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T48. Jobs + dead-letters + compliance + metrics + audit + feature flags
+### ☑ T48. Jobs + dead-letters + compliance + metrics + audit + feature flags
 **Specs:** `docs/platform-admin-spec.md §9–§14`
 **Depends:** T47
 **Files:**
