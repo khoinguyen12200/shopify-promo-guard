@@ -1,0 +1,19 @@
+# See: CLAUDE.md § Infrastructure
+# Dev image used by `docker compose up` for local iteration. Installs the
+# CLI (shopify / prisma) so developers can run migrations and codegen.
+FROM node:20-alpine
+RUN apk add --no-cache openssl bash
+WORKDIR /app
+
+ENV NODE_ENV=development
+EXPOSE 3000
+
+COPY package.json package-lock.json* ./
+RUN npm ci --legacy-peer-deps
+
+COPY prisma ./prisma/
+RUN npx prisma generate
+
+COPY . .
+
+CMD ["npm", "run", "dev"]

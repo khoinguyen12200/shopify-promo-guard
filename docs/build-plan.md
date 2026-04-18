@@ -687,7 +687,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 9 — Deploy
 
-### ☐ T50. Dockerfiles
+### ☑ T50. Dockerfiles
 **Specs:** `CLAUDE.md § Infrastructure`
 **Depends:** T02, T18
 **Files:**

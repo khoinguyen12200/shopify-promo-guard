@@ -1,0 +1,32 @@
+# See: CLAUDE.md § Infrastructure (Cloud Run, Artifact Registry)
+# Multi-stage build. Stage 1 compiles the Remix bundle + Prisma client,
+# Stage 2 ships only the runtime dependencies and the built artefact.
+FROM node:20-alpine AS build
+RUN apk add --no-cache openssl
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+RUN npm ci --legacy-peer-deps
+RUN npx prisma generate
+
+COPY . .
+# Web extensions live alongside the Remix app in the same workspace; they
+# don't need to be built here (Cloud Run runs the web server only).
+RUN npm run build
+
+FROM node:20-alpine
+RUN apk add --no-cache openssl
+WORKDIR /app
+
+COPY --from=build /app/package.json /app/package-lock.json* ./
+COPY --from=build /app/prisma ./prisma/
+RUN npm ci --legacy-peer-deps --omit=dev && npm cache clean --force
+RUN npx prisma generate
+
+COPY --from=build /app/build ./build
+
+ENV NODE_ENV=production
+ENV PORT=8080
+EXPOSE 8080
+CMD ["npm", "run", "docker-start"]
