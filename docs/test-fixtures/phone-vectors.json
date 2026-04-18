@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cases": [
+    {"input": "+84 901 234 567", "default": "+84", "expected": "+84901234567"},
+    {"input": "+84-901-234-567", "default": "+84", "expected": "+84901234567"},
+    {"input": "0084901234567", "default": "+84", "expected": "+84901234567"},
+    {"input": "0901234567", "default": "+84", "expected": "+84901234567"},
+    {"input": "901234567", "default": "+84", "expected": "+84901234567"},
+    {"input": "(090) 123 4567", "default": "+84", "expected": "+84901234567"},
+    {"input": "", "default": "+84", "expected": null},
+    {"input": "not-a-phone", "default": "+84", "expected": null},
+    {"input": "+1", "default": null, "expected": null},
+    {"input": "0901234567", "default": null, "expected": null},
+    {"input": "+14155550123", "default": null, "expected": "+14155550123"}
+  ]
+}

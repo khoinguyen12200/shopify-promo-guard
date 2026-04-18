@@ -753,7 +753,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 10 — Launch readiness
 
-### ☐ T55. Protected customer data application (manual, but tracked here)
+### ⚠ T55. Protected customer data application (manual, but tracked here)
 **Specs:** `docs/landing-page-spec.md §7` · `docs/system-design.md § Privacy`
 **Depends:** T43, T44
 **Files:**
@@ -763,7 +763,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T56. App Store listing + review submission
+### ⚠ T56. App Store listing + review submission
 **Specs:** `docs/landing-page-spec.md §15`
 **Depends:** T54, T55
 **Files:**

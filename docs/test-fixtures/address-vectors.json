@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "normalize_string": [
+    {"input": "123 Main Street", "expected": "123 main st"},
+    {"input": "Số 12 Đường Lê Lợi", "expected": "so 12 duong le loi"},
+    {"input": "  hello   world  ", "expected": "hello world"},
+    {"input": "Apt. 4B", "expected": "apt 4b"}
+  ],
+  "strip_leading_house_number": [
+    {"input": "123 main st", "expected": "main st"},
+    {"input": "12a main st", "expected": "main st"},
+    {"input": "main st", "expected": "main st"},
+    {"input": "", "expected": ""}
+  ],
+  "keys": [
+    {"addr": {"line1": "123 Main Street", "line2": "", "zip": "94102", "country_code": "US"}, "full": "123 main st||94102|US", "house": "main st|94102|US"},
+    {"addr": {"line1": "125 Main St", "line2": "", "zip": "94102", "country_code": "US"}, "full": "125 main st||94102|US", "house": "main st|94102|US"},
+    {"addr": {"line1": "123 Main St., Apt 4B", "line2": "", "zip": "94102", "country_code": "US"}, "full": "123 main st apt 4b||94102|US", "house": "main st apt 4b|94102|US"},
+    {"addr": {"line1": "Số 12 Đường Lê Lợi", "line2": "", "zip": "70000", "country_code": "VN"}, "full": "so 12 duong le loi||70000|VN", "house": "so 12 duong le loi|70000|VN"},
+    {"addr": {"line1": "", "line2": "", "zip": "94102", "country_code": "US"}, "full": "||94102|US", "house": "|94102|US"}
+  ],
+  "trigrams": [
+    {"n1": "main st", "zip": "94102", "cc": "us", "expected": ["mai", "ain", "941", "410", "102"]}
+  ]
+}

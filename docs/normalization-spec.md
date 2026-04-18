@@ -56,6 +56,14 @@ GMAIL_DOMAINS = ["gmail.com", "googlemail.com"]
 - Stripping `+tag` is universally safe: mail servers that support plus-aliasing deliver to the non-plus address. Providers that don't support it simply don't create addresses containing `+`.
 - We do NOT canonicalize other providers' aliasing schemes (e.g., Outlook's `-tag`) because they vary and false-canonicalization would merge different people.
 
+### MVP limitation: NFKC (version 1 only)
+
+To keep the Rust crate dependency-free (Invariant 4), the Rust implementation of `canonical_email` treats NFKC normalization as a **pass-through** — the raw input bytes flow straight into step 2. The Node implementation calls `String.prototype.normalize("NFKC")`, which is built into V8 and incurs no dependency cost.
+
+For the ASCII-dominant email space (virtually all real-world email local-parts and domains are ASCII after step 2's lowercase), the two implementations produce **byte-identical output**. The divergence only surfaces for non-ASCII inputs whose NFKC form differs from their raw form (e.g., the full-width Latin character `Ａ` would become `A` in Node but remain `Ａ` in Rust).
+
+We accept this divergence in `v1`. When we observe non-ASCII email inputs in production that actually matter, we will either (a) add the `unicode-normalization` crate to the Rust side or (b) implement a minimal NFKC table for the compatibility equivalents we care about. Either path **bumps `NORMALIZATION_VERSION` to 2** per §11 and rebuilds `docs/test-fixtures/hash-vectors.json` + any fingerprint metafield shards.
+
 ---
 
 ## 2. Phone E.164 normalization
@@ -186,7 +194,7 @@ strip_leading_house_number(s):
 | `123 Main Street` | `94102` | `US` | `123 main st\|\|94102\|US` | `main st\|94102\|US` |
 | `125 Main St` | `94102` | `US` | `125 main st\|\|94102\|US` | `main st\|94102\|US` |
 | `123 Main St., Apt 4B` | `94102` | `US` | `123 main st apt 4b\|\|94102\|US` | `main st apt 4b\|94102\|US` |
-| `Số 12 Đường Lê Lợi` | `70000` | `VN` | `so 12 duong le loi\|\|70000\|VN` | `duong le loi\|70000\|VN` |
+| `Số 12 Đường Lê Lợi` | `70000` | `VN` | `so 12 duong le loi\|\|70000\|VN` | `so 12 duong le loi\|70000\|VN` |
 | `` | `94102` | `US` | `\|\|94102\|US` | `\|94102\|US` |
 
 Note: `house_key` and `street_key` produce the same value in MVP. `street_key` is reserved for a future house-number bucket implementation (ranges of 10) and currently aliases to `house_key`.

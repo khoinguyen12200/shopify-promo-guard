@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "thresholds": { "medium": 4, "high": 10 },
+  "weights": {
+    "phone_exact": 10,
+    "email_canonical_exact": 10,
+    "email_minhash_strong": 6,
+    "email_minhash_weak": 4,
+    "address_full_exact": 10,
+    "address_house_exact": 8,
+    "address_minhash_strong": 6,
+    "address_minhash_weak": 4,
+    "customer_tag": 10,
+    "ip_v4_24": 2,
+    "ip_v6_48": 2
+  }
+}

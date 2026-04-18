@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "canonical": [
+    {"input": "Khoi.Nguyen@Gmail.com", "expected": "khoinguyen@gmail.com"},
+    {"input": "khoi.nguyen+promo@gmail.com", "expected": "khoinguyen@gmail.com"},
+    {"input": "khoi.nguyen@googlemail.com", "expected": "khoinguyen@googlemail.com"},
+    {"input": "  KHOI+anything@OUTLOOK.COM ", "expected": "khoi@outlook.com"},
+    {"input": "khoi.gia.nguyen@yahoo.com", "expected": "khoi.gia.nguyen@yahoo.com"},
+    {"input": "khoi.nguyen@", "expected": null},
+    {"input": "@gmail.com", "expected": null},
+    {"input": "khoi nguyen@gmail.com", "expected": "khoinguyen@gmail.com"}
+  ],
+  "trigrams": [
+    {"canonical_local": "khoinguyen", "expected": ["kho","hoi","oin","ing","ngu","guy","uye","yen"]},
+    {"canonical_local": "testerkhoi", "expected": ["tes","est","ste","ter","erk","rkh","kho","hoi"]},
+    {"canonical_local": "kh", "expected": []}
+  ]
+}
