@@ -453,9 +453,9 @@ scopes = "read_customers"
 
 Because `cart.discountCodes` is absent from the Validation Function input schema, we cannot gate scoring on "cart contains our offer's code" at Function time. Instead:
 
-1. The app backend deploys **one Validation Function extension per protected offer**, with the offer id baked into the query at deploy time (string substitution into `src/cart_validations_generate_run.graphql`).
-2. The extension is only attached to checkouts that Shopify routes through that specific offer's flow, so activation is implicit — `cart_has_guarded_code: true` is set unconditionally inside the Function and the empty-ledger fast path inside `score_checkout` covers fresh offers.
-3. The shard layout collapses from 5 separate metafields (§2) to **a single combined shard** under `namespace: "promo_guard"` with a per-offer key (the literal `shard_v1` in the scaffolded query is a placeholder substituted at deploy time — e.g. `shard_<offer_id>`). The combined shape:
+1. The app deploys **one Validation Function** and **one Discount Function** per shop (not per offer). Both functions read the same combined shop-wide shard, so adding a new protected offer is pure data — no function redeploy required.
+2. Activation is implicit — `cart_has_guarded_code: true` is set unconditionally inside each Function and the empty-ledger fast path inside `score_checkout` covers fresh installs. In practice, the validator is only activated on checkouts where the merchant has configured a Checkout Rule, and the discount function only runs when its bound discount code is applied — so reaching "evaluate" implies "protected flow."
+3. The shard layout collapses from 5 separate metafields (§2) to **a single combined shop-wide shard** under `namespace: "promo_guard"`, `key: "shard_v1"`. Hashes from every protected offer on the shop are pooled into this one document — the app's `RedemptionRecord` table in Postgres keeps per-offer attribution for analytics. The combined shape:
 
 ```json
 {
@@ -492,6 +492,5 @@ All fields optional; the parser drops malformed hex entries per-row so a single 
 
 ## 10. Non-goals
 
-- **Multi-function orchestration** — each protected offer deploys its own pair of function extensions, each with a hard-coded offer ID. No runtime function-to-function communication.
-- **Dynamic offer addition without redeploy** — adding a new protected offer means scaffolding + deploying new extensions. Automated via our app backend (which runs `shopify app deploy`-equivalent via the Admin GraphQL API for function extension deployment). But each deploy is a real Shopify operation, not hot-config.
+- **Per-offer function deploys** — Plan C (§9) adopts a single shop-wide shard and one function pair per shop. Cross-offer detection is an acceptable consequence: a buyer who redeemed *any* protected offer is flagged when abusing *any other*. The per-offer analytics split lives in Postgres (`RedemptionRecord.protectedOfferId`), not in the metafield.
 - **Delivery discount guarding** — we only emit `CartLinesDiscountsGenerateRunResult` targeting order/product subtotal. Free-shipping welcome offers need the delivery target; not in MVP.

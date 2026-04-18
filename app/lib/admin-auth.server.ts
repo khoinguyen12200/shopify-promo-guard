@@ -6,27 +6,24 @@
 import { createHmac, randomBytes } from "crypto";
 import { redirect } from "react-router";
 import prisma from "../db.server.js";
+import { env } from "./env.server.js";
 
 const SESSION_COOKIE = "__admin_session";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const MAGIC_LINK_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 function getMagicLinkSecret(): string {
-  const secret = process.env.MAGIC_LINK_SECRET;
-  if (!secret) throw new Error("MAGIC_LINK_SECRET env var is not set");
-  return secret;
+  return env.MAGIC_LINK_SECRET;
 }
 
 function getAllowedEmails(): string[] {
-  const raw = process.env.PLATFORM_ADMIN_EMAILS ?? "";
-  return raw
-    .split(",")
+  return env.PLATFORM_ADMIN_ALLOWED_EMAILS.split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 }
 
 function getAppUrl(): string {
-  return (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  return env.SHOPIFY_APP_URL.replace(/\/$/, "");
 }
 
 /** Generate 32 random bytes as hex. */
@@ -71,7 +68,7 @@ export async function requestMagicLink(
 
   const url = `${getAppUrl()}/admin/login?token=${token}`;
 
-  if (process.env.NODE_ENV !== "production") {
+  if (env.NODE_ENV !== "production") {
     // eslint-disable-next-line no-console
     console.error(`[admin-auth] magic-link token for ${normalised}: ${token}`);
     console.error(`[admin-auth] magic-link URL: ${url}`);

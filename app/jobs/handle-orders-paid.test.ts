@@ -169,14 +169,21 @@ describe("handleOrdersPaid", () => {
     expect(prismaMock.redemptionRecord.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.flaggedOrder.create).not.toHaveBeenCalled();
     expect(orderRiskAssessmentCreateMock).not.toHaveBeenCalled();
-    expect(tagsAddMock).not.toHaveBeenCalled();
+    // The customer is tagged as a known redeemer on every non-zero-score or
+    // zero-score redemption — the Function's customer-tag fast path depends
+    // on this (docs/function-queries-spec.md §9).
+    expect(tagsAddMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "gid://shopify/Customer/1",
+      ["promo-guard-redeemed"],
+    );
     expect(enqueueJobMock).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "shard_append",
         shopId: "shop-1",
         payload: expect.objectContaining({
           shopDomain: SHOP.shopDomain,
-          protectedOfferId: "offer-A",
+          saltHex: SHOP.salt,
         }),
       }),
     );
@@ -222,6 +229,12 @@ describe("handleOrdersPaid", () => {
       expect.anything(),
       "gid://shopify/Order/123",
       ["promo-guard-flagged"],
+    );
+    // Also tags the customer shop-wide.
+    expect(tagsAddMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "gid://shopify/Customer/1",
+      ["promo-guard-redeemed"],
     );
     expect(enqueueJobMock).toHaveBeenCalledWith(
       expect.objectContaining({ type: "shard_append" }),

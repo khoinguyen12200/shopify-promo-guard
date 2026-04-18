@@ -14,13 +14,13 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { env } from "./env.server.js";
+
 export const IMPERSONATION_COOKIE = "__pg_impersonate";
 const TTL_MS = 15 * 60 * 1000;
 
 function getSecret(): string {
-  const secret = process.env.MAGIC_LINK_SECRET;
-  if (!secret) throw new Error("MAGIC_LINK_SECRET env var is not set");
-  return secret;
+  return env.MAGIC_LINK_SECRET;
 }
 
 function sign(payload: string): string {

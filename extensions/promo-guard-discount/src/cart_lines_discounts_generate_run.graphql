@@ -1,3 +1,11 @@
+# See: docs/function-queries-spec.md §4, §9 (Plan C — single combined shop shard)
+#
+# Plan C: we read the same shop-wide shard as the Validation Function
+# (namespace: "promo_guard", key: "shard_v1"), extract buyer identity from
+# the cart, hash with the shard's salt, and score via `score_checkout`.
+#
+# Query cost fits within the 30-point Function budget — see §4 for the full
+# breakdown.
 query Input {
   triggeringDiscountCode
 
@@ -6,7 +14,7 @@ query Input {
       email
       phone
       customer {
-        hasAnyTag(tags: ["__PG_TAG_PLACEHOLDER__"])
+        hasAnyTag(tags: ["promo-guard-redeemed"])
       }
     }
 
@@ -14,7 +22,6 @@ query Input {
       deliveryAddress {
         address1
         address2
-        city
         zip
         countryCode
       }
@@ -26,10 +33,8 @@ query Input {
   }
 
   shop {
-    phones:        metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_phones")         { value }
-    emailsExact:   metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_emails_exact")   { value }
-    emailsMinhash: metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_emails_minhash") { value }
-    addrsExact:    metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_addrs_exact")    { value }
-    addrsMinhash:  metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_addrs_minhash")  { value }
+    shard: metafield(namespace: "promo_guard", key: "shard_v1") {
+      jsonValue
+    }
   }
 }

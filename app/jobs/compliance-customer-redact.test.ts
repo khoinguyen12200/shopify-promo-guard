@@ -36,9 +36,17 @@ vi.mock("../lib/admin-graphql.server.js", () => ({
   tagsRemove: tagsRemoveMock,
 }));
 
-vi.mock("../lib/shards.server.js", () => ({
-  rebuildShard: rebuildShardMock,
-}));
+// Keep real mergeEntry/newShard so the hydration path is actually exercised.
+vi.mock("../lib/shards.server.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../lib/shards.server.js")>(
+      "../lib/shards.server.js",
+    );
+  return {
+    ...actual,
+    rebuildShard: rebuildShardMock,
+  };
+});
 
 vi.mock("../shopify.server.js", () => ({
   unauthenticated: {
@@ -53,6 +61,30 @@ const ctx = {
   shopId: "shop-1",
   updateProgress: async () => {},
 };
+
+function record(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "r1",
+    shopId: "shop-1",
+    protectedOfferId: "offer-A",
+    customerGid: "gid://shopify/Customer/42",
+    orderGid: "gid://shopify/Order/1",
+    orderName: "#1001",
+    codeUsed: "WELCOME10",
+    phoneHash: "aabbccdd",
+    emailCanonicalHash: "11223344",
+    addressFullHash: "55667788",
+    ipHash24: "99aabbcc",
+    emailMinhashSketch: null,
+    addressMinhashSketch: null,
+    emailCiphertext: null,
+    phoneCiphertext: null,
+    addressCiphertext: null,
+    ipCiphertext: null,
+    createdAt: new Date(1_700_000_000_000),
+    ...overrides,
+  };
+}
 
 describe("complianceCustomerRedactHandler", () => {
   beforeEach(() => {
@@ -93,7 +125,7 @@ describe("complianceCustomerRedactHandler", () => {
     expect(prismaMock.redemptionRecord.findMany).not.toHaveBeenCalled();
   });
 
-  it("nulls PII, rebuilds shards, removes tags, marks completed", async () => {
+  it("nulls PII, rebuilds the shop-wide shard, removes tag, marks completed", async () => {
     prismaMock.complianceRequest.findUnique.mockResolvedValue({
       id: "cr-1",
       status: "pending",
@@ -103,33 +135,29 @@ describe("complianceCustomerRedactHandler", () => {
     prismaMock.shop.findUnique.mockResolvedValue({
       id: "shop-1",
       shopDomain: "test.myshopify.com",
+      salt: "00".repeat(32),
     });
     prismaMock.redemptionRecord.findMany
+      // 1st call: records belonging to the redacted customer
       .mockResolvedValueOnce([
-        {
-          id: "r1",
-          shopId: "shop-1",
-          protectedOfferId: "offer-A",
-          customerGid: "gid://shopify/Customer/42",
-        },
-        {
-          id: "r2",
-          shopId: "shop-1",
-          protectedOfferId: "offer-B",
-          customerGid: "gid://shopify/Customer/42",
-        },
+        record({ id: "r1", protectedOfferId: "offer-A" }),
+        record({ id: "r2", protectedOfferId: "offer-B" }),
       ])
-      // remaining for offer-A
-      .mockResolvedValueOnce([])
-      // remaining for offer-B
-      .mockResolvedValueOnce([]);
+      // 2nd call: remaining rows for the shop after nulling
+      .mockResolvedValueOnce([
+        record({
+          id: "r3",
+          protectedOfferId: "offer-A",
+          customerGid: "gid://shopify/Customer/other",
+        }),
+      ]);
     prismaMock.redemptionRecord.updateMany.mockResolvedValue({ count: 2 });
     prismaMock.complianceRequest.update.mockResolvedValue({});
     unauthenticatedAdminMock.mockResolvedValue({
       admin: { graphql: vi.fn() },
       session: { id: "1" },
     });
-    rebuildShardMock.mockResolvedValue({ entries: [], bytes: 0 });
+    rebuildShardMock.mockResolvedValue({ shard: null, bytes: 0 });
     tagsRemoveMock.mockResolvedValue({ node: { id: "x", tags: [] } });
 
     await complianceCustomerRedactHandler(
@@ -146,17 +174,18 @@ describe("complianceCustomerRedactHandler", () => {
         emailMinhashSketch: null,
       }),
     });
-    expect(rebuildShardMock).toHaveBeenCalledTimes(2);
+
+    // Shard is rebuilt once (shop-wide), carrying the surviving record's hashes.
+    expect(rebuildShardMock).toHaveBeenCalledTimes(1);
+    const rebuildArgs = rebuildShardMock.mock.calls[0];
+    const passedShard = rebuildArgs[2];
+    expect(passedShard.phone_hashes).toContain("aabbccdd");
+    expect(passedShard.email_hashes).toContain("11223344");
+
     expect(tagsRemoveMock).toHaveBeenCalledTimes(1);
     const [, gid, tags] = tagsRemoveMock.mock.calls[0];
     expect(gid).toBe("gid://shopify/Customer/42");
-    expect(tags).toEqual(
-      expect.arrayContaining([
-        "pg-redeemed-offer-A",
-        "pg-redeemed-offer-B",
-        "promo-guard-flag",
-      ]),
-    );
+    expect(tags).toEqual(["promo-guard-redeemed"]);
     expect(prismaMock.complianceRequest.update).toHaveBeenLastCalledWith({
       where: { id: "cr-1" },
       data: expect.objectContaining({ status: "completed" }),
@@ -173,6 +202,7 @@ describe("complianceCustomerRedactHandler", () => {
     prismaMock.shop.findUnique.mockResolvedValue({
       id: "shop-1",
       shopDomain: "test.myshopify.com",
+      salt: "00".repeat(32),
     });
     prismaMock.redemptionRecord.findMany.mockResolvedValueOnce([]);
     unauthenticatedAdminMock.mockResolvedValue({

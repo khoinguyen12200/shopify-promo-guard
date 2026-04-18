@@ -1,12 +1,12 @@
 /**
  * See: docs/webhook-spec.md §5 (shard_append sub-job)
  *      docs/scoring-spec.md §5.2 (post-order scoring)
+ *      docs/function-queries-spec.md §9 (Plan C shop-wide shard)
  *
  * Sub-job spawned by `handle-orders-paid` after a RedemptionRecord is
- * inserted. Reads the current shop-level shard metafield, appends the new
+ * inserted. Reads the current shop-wide shard metafield, merges the new
  * entry, evicts oldest until under the 10 KB cap, and writes back. The
- * advisory lock inside `appendEntry` serialises concurrent appends per
- * (shop, offer).
+ * advisory lock inside `appendEntry` serialises concurrent appends per shop.
  */
 
 import type { JobHandler } from "../lib/jobs.server.js";
@@ -16,8 +16,10 @@ import { unauthenticated } from "../shopify.server.js";
 export interface ShardAppendPayload {
   shopDomain: string;
   shopGid: string;
-  protectedOfferId: string;
-  shopSalt?: string;
+  /** Shop salt encoded as hex; embedded into the shard for the Function. */
+  saltHex?: string;
+  /** Default country code for E.164 normalization inside the Function. */
+  defaultCountryCc?: string | null;
   entry: ShardEntry;
 }
 
@@ -27,7 +29,6 @@ function isPayload(x: unknown): x is ShardAppendPayload {
   return (
     typeof p.shopDomain === "string" &&
     typeof p.shopGid === "string" &&
-    typeof p.protectedOfferId === "string" &&
     !!p.entry &&
     typeof p.entry === "object"
   );
@@ -42,8 +43,10 @@ export const handleShardAppend: JobHandler<unknown> = async (payload) => {
   await appendEntry(
     admin.graphql,
     { shopDomain: payload.shopDomain, shopGid: payload.shopGid },
-    payload.protectedOfferId,
     payload.entry,
-    { shopSalt: payload.shopSalt ?? "" },
+    {
+      saltHex: payload.saltHex ?? "",
+      defaultCountryCc: payload.defaultCountryCc ?? null,
+    },
   );
 };

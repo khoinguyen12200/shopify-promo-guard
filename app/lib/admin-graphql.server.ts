@@ -13,6 +13,8 @@
  */
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 
+import { env } from "./env.server.js";
+
 export type AdminGqlClient = AdminApiContext["graphql"];
 
 // -- Errors -----------------------------------------------------------------
@@ -78,7 +80,7 @@ function sleep(ms: number): Promise<void> {
 function logCost(op: string, extensions: GqlExtensions | undefined): void {
   if (!extensions?.cost) return;
   // Keep this at debug level; tests don't assert on it.
-  if (typeof process !== "undefined" && process.env?.DEBUG_GQL === "1") {
+  if (env.DEBUG_GQL === "1") {
     // eslint-disable-next-line no-console
     console.debug(`[admin-graphql] ${op} cost`, extensions.cost);
   }

@@ -40,7 +40,7 @@ Same scoring logic runs at checkout and post-order. Each matched signal contribu
 | Address full exact (normalized) | **10** | checkout + post-order |
 | Address MinHash ≥ 0.3 (road + house bucket + zip) | **6** | checkout + post-order |
 | Address street+zip (road + zip only) | **4** | checkout + post-order |
-| Customer tag `pg-redeemed-<offer>` (prior redemption while logged in) | **10** | checkout + post-order |
+| Customer tag `promo-guard-redeemed` (prior redemption while logged in, any offer on this shop) | **10** | checkout + post-order |
 | IP `/24` match | **2** | post-order only |
 
 ### Action thresholds
@@ -129,13 +129,13 @@ Each shard is a rolling-window of the most recent entries. When a new redemption
     - Compute exact hashes + MinHash sketches
     - Insert RedemptionRecord row in Prisma (full history)
     - Append hashes to sharded metafields, evict oldest if >10 KB
-    - If customer is logged in → tagsAdd pg-redeemed-<offer>
+    - If customer is logged in → tagsAdd promo-guard-redeemed (shop-wide)
     - Run authoritative scoring against Prisma (all signals incl. IP)
     - If score ≥ 10 → orderRiskAssessmentCreate HIGH + tag + notify
     - If score 4-9 → orderRiskAssessmentCreate MEDIUM + tag
         │
         ▼
-  Shop metafields  (one set per protected offer, 5 shards each)
+  Shop metafield  (one shop-wide shard: namespace="promo_guard" key="shard_v1")
 
 ──── checkout ─────────────────────────────────────────
 
@@ -143,13 +143,8 @@ Each shard is a rolling-window of the most recent entries. When a new redemption
     input query:
       cart.buyerIdentity.email, phone
       cart.deliveryGroups.deliveryAddress
-      cart.discountCodes
-      cart.customer.hasAnyTag(["pg-redeemed-<offer>"])
-      shop.metafield("pg_<offer>", "phones")
-      shop.metafield("pg_<offer>", "emails_exact")
-      shop.metafield("pg_<offer>", "emails_minhash")
-      shop.metafield("pg_<offer>", "addrs_exact")
-      shop.metafield("pg_<offer>", "addrs_minhash")
+      cart.customer.hasAnyTag(["promo-guard-redeemed"])
+      shop.metafield("promo_guard", "shard_v1")   // combined parallel arrays
     Rust logic:
       if no cart.discountCodes matches this offer's group → return allow
       normalize incoming signals

@@ -81,9 +81,9 @@ pub struct ScoreResult {
 ///
 /// This is `jaccard_count` from scoring-spec.md §4.3/4.6.  Range: 0–4.
 ///
-/// TODO(T10): once `crate::minhash` is implemented, delegate here.
-/// For now we inline the trivial band comparison so this crate compiles
-/// without a minhash dependency.
+/// Inlined here so this scoring module stays self-contained — the canonical
+/// implementation lives at `crate::minhash::jaccard_count`, which is a pure
+/// band-by-band equality check that we re-state rather than take a dep on.
 #[inline]
 fn jaccard_count(a: &[u32; 4], b: &[u32; 4]) -> usize {
     a.iter().zip(b.iter()).filter(|(x, y)| x == y).count()

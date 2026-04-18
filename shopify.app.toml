@@ -1,4 +1,10 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+# See: CLAUDE.md § Infrastructure · docs/system-design.md · docs/webhook-spec.md
+#
+# application_url / redirect_urls are maintained automatically by the Shopify
+# CLI during `shopify app dev` (see [build].automatically_update_urls_on_dev).
+# In production, these are set to the deployed Cloud Run URL by
+# `shopify app deploy`.
 
 client_id = "be6ffd8b113b73476546c4cefdccc3fb"
 name = "promo-guard"
@@ -11,6 +17,12 @@ include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-07"
+
+  # GDPR mandatory webhooks (see docs/webhook-spec.md §7).
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "/webhooks/customers/data_request"
+  customer_deletion_url = "/webhooks/customers/redact"
+  shop_deletion_url = "/webhooks/shop/redact"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
@@ -44,31 +56,12 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_metaobjects,write_metaobject_definitions"
+# - read_orders / write_orders: orders/paid handler, order risk assessments, tags
+# - read_customers: buyer identity on orders + cart
+# - read_discounts / write_discounts: managing protected codes + discount function
+# - read_products: code-picker + discount suggestions
+# - write_app_data_metafields: shard metafield writes (Plan C combined shard)
+scopes = "read_orders,write_orders,read_customers,read_discounts,write_discounts,read_products,write_app_data_metafields"
 
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]
-
-[product.metafields.app.demo_info]
-type = "single_line_text_field"
-name = "Demo Source Info"
-description = "Tracks products created by the Shopify app template for development"
-
-  [product.metafields.app.demo_info.access]
-  admin = "merchant_read_write"
-
-[metaobjects.app.example]
-name = "Example"
-description = "An example metaobject definition created by this template"
-
-  [metaobjects.app.example.access]
-  admin = "merchant_read_write"
-
-[metaobjects.app.example.fields.title]
-name = "Title"
-type = "single_line_text_field"
-required = true
-
-[metaobjects.app.example.fields.description]
-name = "Description"
-type = "multi_line_text_field"

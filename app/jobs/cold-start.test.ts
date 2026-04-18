@@ -265,7 +265,7 @@ describe("handleColdStart — happy path", () => {
     );
     expect(shardAppendCalls).toHaveLength(3);
     for (const [args] of shardAppendCalls) {
-      expect(args.payload.protectedOfferId).toBe("offer-A");
+      expect(args.payload.saltHex).toBe(SHOP.salt);
       expect(args.payload.shopDomain).toBe(SHOP.shopDomain);
       expect(args.shopId).toBe(SHOP.id);
     }

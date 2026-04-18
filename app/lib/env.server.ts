@@ -30,6 +30,7 @@ const envSchema = z.object({
   SHOPIFY_API_SECRET: z.string().min(1, "SHOPIFY_API_SECRET is required"),
   SHOPIFY_APP_URL: z.string().url("SHOPIFY_APP_URL must be a valid URL"),
   SCOPES: z.string().optional(),
+  SHOP_CUSTOM_DOMAIN: z.string().optional(),
 
   // Secrets — 32 random bytes encoded as 64 hex chars (openssl rand -hex 32).
   APP_KEK_HEX: z
@@ -38,11 +39,20 @@ const envSchema = z.object({
   SESSION_SECRET: z
     .string()
     .regex(HEX_32_BYTES, "SESSION_SECRET must be 64 hex chars (32 bytes)"),
+  MAGIC_LINK_SECRET: z
+    .string()
+    .regex(HEX_32_BYTES, "MAGIC_LINK_SECRET must be 64 hex chars (32 bytes)"),
 
   // Comma-separated allowlist of emails permitted to access /admin.*.
   PLATFORM_ADMIN_ALLOWED_EMAILS: z
     .string()
     .min(1, "PLATFORM_ADMIN_ALLOWED_EMAILS is required"),
+
+  // Worker tuning (optional, default 2000ms poll).
+  POLL_INTERVAL_MS: z.coerce.number().int().positive().default(2000),
+
+  // Optional debug flag for Admin GraphQL cost logging.
+  DEBUG_GQL: z.enum(["0", "1"]).default("0"),
 
   // Standard Node environment.
   NODE_ENV: z

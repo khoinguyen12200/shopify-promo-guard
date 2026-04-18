@@ -2,20 +2,18 @@
 # Related: docs/function-queries-spec.md §9 (nullability + Plan C decision)
 #
 # Plan C: cart.discountCodes is NOT in the cart_checkout_validation input
-# schema for this api_version. We don't gate on the typed discount code at
-# function time; instead the merchant deploys one validator per protected
-# offer, and the function reads a single combined shard metafield whose key
-# encodes the offer id.
-#
-# The literal "shard_v1" key below is a placeholder substituted at deploy
-# time by the app backend (see docs/function-queries-spec.md §9).
+# schema for this api_version. We can't gate on the typed discount code at
+# function time; instead the Validation Function is attached to checkouts via
+# a merchant-configured Checkout Rule, and reads a single shop-wide shard
+# metafield (namespace: "promo_guard", key: "shard_v1") containing pooled
+# identity hashes for every protected offer on the shop.
 query Input {
   cart {
     buyerIdentity {
       email
       phone
       customer {
-        hasAnyTag(tags: ["__PG_TAG_PLACEHOLDER__"])
+        hasAnyTag(tags: ["promo-guard-redeemed"])
       }
     }
 

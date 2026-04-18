@@ -10,6 +10,7 @@ import {
   verifyMagicLink,
   buildSessionCookie,
 } from "../lib/admin-auth.server.js";
+import { env } from "../lib/env.server.js";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -50,7 +51,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const link = await requestMagicLink(email, ipAddress);
 
     // In production, send via email. For now, surface in non-prod.
-    if (process.env.NODE_ENV !== "production") {
+    if (env.NODE_ENV !== "production") {
       return { sent: true, devLink: link };
     }
 
@@ -61,7 +62,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Don't leak whether the email is in the allowlist to an attacker;
       // show the same "check your inbox" message. We still return the real
       // error only in non-production for developer convenience.
-      if (process.env.NODE_ENV !== "production") {
+      if (env.NODE_ENV !== "production") {
         return { error: message };
       }
       return { sent: true, devLink: null };

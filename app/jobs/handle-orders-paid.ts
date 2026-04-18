@@ -348,6 +348,23 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
     });
   }
 
+  // ---- Tag the customer as a known redeemer (shop-wide) -----------------
+  // The Function reads `customer.hasAnyTag(["promo-guard-redeemed"])` to
+  // short-circuit to HIGH for known redeemers without the shard read (see
+  // docs/function-queries-spec.md §9). Best-effort: if the order had no
+  // customer attached (guest) we skip.
+  const custGid = customerGid(order);
+  if (custGid) {
+    try {
+      await tagsAdd(adminClient.graphql, custGid, ["promo-guard-redeemed"]);
+    } catch (err) {
+      console.error(
+        "[orders_paid] tagsAdd(customer) failed",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // ---- Enqueue shard append ---------------------------------------------
   await enqueueJob({
     shopId: shop.id,
@@ -355,8 +372,8 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
     payload: {
       shopDomain: shop.shopDomain,
       shopGid: `gid://shopify/Shop/${args.sessionId}`,
-      protectedOfferId,
-      shopSalt: shop.salt,
+      saltHex: shop.salt,
+      defaultCountryCc: null,
       entry: {
         ts: Math.floor(newRecord.createdAt.getTime() / 1000),
         phone: hashes["phone"] ?? "",

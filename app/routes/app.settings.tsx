@@ -66,15 +66,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // First click — bounce back with a confirm prompt rendered.
       return redirect("/app/settings?confirm=1");
     }
-    // TODO(T54+): implement the actual `rotate-salt` job handler. It must:
-    //   1. Generate a new salt + bump Shop.saltVersion.
-    //   2. Re-derive every hash column (RedemptionRecord, ShardState, ...).
-    //   3. Mark every ProtectedOffer.shardVersion += 1 to invalidate caches.
-    // For now we just enqueue the work; the worker will dead-letter until the
-    // handler is registered, which is the desired loud failure.
+    // Handler in app/jobs/rotate-salt.ts: generates a new salt, re-hashes
+    // every RedemptionRecord from ciphertext, rebuilds the shop-wide shard.
     await enqueueJob({
       shopId: shop.id,
-      type: "rotate-salt",
+      type: "rotate_salt",
       payload: { requestedAt: new Date().toISOString() },
     });
     return redirect("/app/settings?saved=rotate");

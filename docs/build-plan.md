@@ -784,4 +784,4 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 **Phase 0** (4 tasks): foundation · **Phase 1** (9 tasks): normalize/score · **Phase 2** (9 tasks): webhooks · **Phase 3** (5 tasks): functions · **Phase 4** (12 tasks): merchant UI · **Phase 5** (2 tasks): admin extension · **Phase 6** (1 task): cold start · **Phase 7** (2 tasks): public · **Phase 8** (5 tasks): platform admin · **Phase 9** (5 tasks): deploy · **Phase 10** (2 tasks): launch
 
-Total: **56 tasks**. Current: 0/56 done.
+Total: **56 tasks**. Current: 54/56 done (T55 + T56 are Shopify submission steps — external).

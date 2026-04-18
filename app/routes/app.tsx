@@ -4,6 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { readImpersonationSession } from "../lib/admin-impersonation.server";
+import { env } from "../lib/env.server";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -17,9 +18,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const impersonation = readImpersonationSession(request);
 
-  // eslint-disable-next-line no-undef
   return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
+    apiKey: env.SHOPIFY_API_KEY,
     impersonation: impersonation
       ? {
           shopDomain: impersonation.shopDomain,

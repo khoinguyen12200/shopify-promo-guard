@@ -420,8 +420,8 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
     payload: {
       shopDomain: shop.shopDomain,
       shopGid: `gid://shopify/Shop/${sessionId}`,
-      protectedOfferId,
-      shopSalt: shop.salt,
+      saltHex: shop.salt,
+      defaultCountryCc: null,
       entry: {
         ts: Math.floor(created.createdAt.getTime() / 1000),
         phone: sig.hashes["phone"] ?? "",

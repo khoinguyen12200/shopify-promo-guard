@@ -226,11 +226,11 @@ handle_orders_paid(shopId, payload):
          if risk_level == "HIGH":
            await notify_merchant(shop, offer, orderName, facts)
 
-       // 3d. Tag the customer (if logged in)
+       // 3d. Tag the customer (shop-wide, if logged in)
        if payload.customer?.admin_graphql_api_id:
          await admin.graphql(TAGS_ADD, {
            id: payload.customer.admin_graphql_api_id,
-           tags: [`pg-redeemed-${offer.id}`],
+           tags: ["promo-guard-redeemed"],
          })
 
        // 3e. Append to shard metafields (queued — runs separately)
@@ -373,14 +373,13 @@ compliance_customer_redact(customerGid, shopId, requestId):
     })
     // We keep the row (for FlaggedOrder referential integrity) but remove all PII and all hashes
 
-  // Rebuild shard metafields without the redacted entries
-  for offerId in distinct(records.protectedOfferId):
-    enqueueJob({ shopId, type: "shard_rebuild", payload: { offerId } })
+  // Rebuild the shop-wide shard from the surviving non-redacted rows
+  enqueueJob({ shopId, type: "shard_rebuild" })
 
-  // Remove customer tag we added
+  // Remove the shop-wide redeemer tag we added on the customer
   await admin.graphql(TAGS_REMOVE, {
     id: customerGid,
-    tags: affectedOffers.map(o => `pg-redeemed-${o.id}`),
+    tags: ["promo-guard-redeemed"],
   })
 
   ComplianceRequest.update({ id: requestId }, { status: "completed", completedAt: now })
