@@ -564,7 +564,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 6 — Cold-start backfill
 
-### ☐ T42. Cold-start job
+### ☑ T42. Cold-start job
 **Specs:** `docs/system-design.md § Cold start` · `docs/admin-ui-spec.md (progress indicator)`
 **Depends:** T18, T34
 **Files:**

@@ -6,13 +6,15 @@
  * process that polls the `Job` table and dispatches to registered handlers.
  *
  * Handlers register themselves here as later tasks add them (T18 shard-append,
- * T21 compliance-redact, T42 cold-start, ...). For T15 we ship the skeleton
- * with an empty registry — unknown job types dead-letter immediately, which is
- * the correct failure mode if production sees one before handlers are wired.
+ * T21 compliance-redact, T42 cold-start is live). For T15 we shipped the
+ * skeleton with an empty registry — unknown job types dead-letter immediately,
+ * which is the correct failure mode if production sees one before handlers
+ * are wired.
  */
 
 import "dotenv/config";
 
+import { handleColdStart } from "../jobs/cold-start.js";
 import { handleAppUninstalled } from "../jobs/handle-app-uninstalled.js";
 import { handleComplianceShopRedact } from "../jobs/compliance-shop-redact.js";
 import { handleOrdersPaid } from "../jobs/handle-orders-paid.js";
@@ -21,6 +23,7 @@ import { runJobBatch, type JobRegistry } from "../lib/jobs.server.js";
 
 const registry: JobRegistry = {
   app_uninstalled: handleAppUninstalled as JobRegistry[string],
+  cold_start: handleColdStart as JobRegistry[string],
   compliance_shop_redact: handleComplianceShopRedact as JobRegistry[string],
   orders_paid: handleOrdersPaid as JobRegistry[string],
   shard_append: handleShardAppend as JobRegistry[string],
