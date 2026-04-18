@@ -1,3 +1,5 @@
+// See: docs/function-queries-spec.md §4 (Discount Function input query + targets)
+// Related: docs/scoring-spec.md §5.1 (HIGH → silent strip)
 use shopify_function::prelude::*;
 use std::process;
 

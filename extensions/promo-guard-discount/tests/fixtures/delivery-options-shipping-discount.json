@@ -8,38 +8,14 @@
       },
       "cart": {
         "deliveryGroups": [
-           {
-             "id": "gid://shopify/CartDeliveryGroup/1"
-           }
+          {
+            "id": "gid://shopify/CartDeliveryGroup/1"
+          }
         ]
       }
     },
     "output": {
-      "operations": [
-        {
-          "deliveryDiscountsAdd": {
-            "candidates": [
-              {
-                "associatedDiscountCode": null,
-                "message": "FREE DELIVERY",
-                "targets": [
-                  {
-                    "deliveryGroup": {
-                      "id": "gid://shopify/CartDeliveryGroup/1"
-                    }
-                  }
-                ],
-                "value": {
-                  "percentage": {
-                    "value": "100.0"
-                  }
-                }
-              }
-            ],
-            "selectionStrategy": "ALL"
-          }
-        }
-      ]
+      "operations": []
     }
   }
 }

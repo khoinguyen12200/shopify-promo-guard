@@ -365,7 +365,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T27. Discount input query + run.rs
+### ☑ T27. Discount input query + run.rs
 **Specs:** `docs/function-queries-spec.md §4` · `docs/scoring-spec.md §5.1`
 **Depends:** T13, T26
 **Files:**
@@ -433,7 +433,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T32. Create offer form + manual code entry
+### ☑ T32. Create offer form + manual code entry
 **Specs:** `docs/admin-ui-spec.md §5`
 **Depends:** T30, T31
 **Files:**
@@ -594,7 +594,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T44. Pricing, privacy, security, terms, install
+### ☑ T44. Pricing, privacy, security, terms, install
 **Specs:** `docs/landing-page-spec.md §5, §6, §7, §8`
 **Depends:** T43
 **Files:**

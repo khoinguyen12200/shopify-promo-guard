@@ -1,15 +1,35 @@
 query Input {
+  triggeringDiscountCode
+
   cart {
-    lines {
-      id
-      cost {
-        subtotalAmount {
-          amount
-        }
+    buyerIdentity {
+      email
+      phone
+      customer {
+        hasAnyTag(tags: ["__PG_TAG_PLACEHOLDER__"])
+      }
+    }
+
+    deliveryGroups {
+      deliveryAddress {
+        address1
+        address2
+        city
+        zip
+        countryCode
       }
     }
   }
+
   discount {
     discountClasses
+  }
+
+  shop {
+    phones:        metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_phones")         { value }
+    emailsExact:   metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_emails_exact")   { value }
+    emailsMinhash: metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_emails_minhash") { value }
+    addrsExact:    metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_addrs_exact")    { value }
+    addrsMinhash:  metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_addrs_minhash")  { value }
   }
 }
