@@ -233,12 +233,12 @@ test-rust: ## Run Rust tests
 test-fixture-parity: ## Verify Node and Rust produce identical output on docs/test-fixtures/hash-vectors.json
 	@if [ ! -f docs/test-fixtures/hash-vectors.json ]; then \
 		echo "⚠  fixture file not yet created (task T06) — skipping parity test."; \
-		exit 0; \
+	else \
+		echo "→ Node fixture check"; \
+		DATABASE_URL="$(DEV_DB_URL)" npx tsx scripts/verify-fixtures.ts || exit 1; \
+		echo "→ Rust fixture check"; \
+		(cd shared-rust && cargo test --test fixture_vectors) || exit 1; \
 	fi
-	@echo "→ Node fixture check"
-	@DATABASE_URL="$(DEV_DB_URL)" npx tsx scripts/verify-fixtures.ts
-	@echo "→ Rust fixture check"
-	@(cd shared-rust && cargo test --test fixture_vectors)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Deploy

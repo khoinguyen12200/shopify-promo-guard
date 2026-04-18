@@ -1,17 +1,291 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// See: docs/database-design.md
+// Source of truth for the DB schema. Bump via `npx prisma migrate dev`.
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
+
+// -----------------------------------------------------------------------------
+// Shop — one row per installed store
+// -----------------------------------------------------------------------------
+
+model Shop {
+  id            String   @id @default(cuid())
+  shopDomain    String   @unique
+  accessToken   String
+  scope         String
+  salt          String
+  encryptionKey String
+
+  protectedDataLevel  Int     @default(0)
+  timezone            String?
+  currencyCode        String?
+
+  installedAt   DateTime  @default(now())
+  uninstalledAt DateTime?
+
+  protectedOffers    ProtectedOffer[]
+  redemptionRecords  RedemptionRecord[]
+  flaggedOrders      FlaggedOrder[]
+  jobs               Job[]
+  webhookEvents      WebhookEvent[]
+  auditLogs          AuditLog[]
+  complianceRequests ComplianceRequest[]
+
+  @@index([uninstalledAt])
+}
+
+// -----------------------------------------------------------------------------
+// ProtectedOffer — a group of codes treated as one welcome program
+// -----------------------------------------------------------------------------
+
+model ProtectedOffer {
+  id     String @id @default(cuid())
+  shopId String
+  name   String
+  mode   String
+  status String @default("active")
+
+  shardVersion    Int    @default(0)
+  coldStartStatus String @default("pending")
+  coldStartDone   Int    @default(0)
+  coldStartTotal  Int    @default(0)
+
+  validationFunctionActivated Boolean @default(false)
+  discountIdAppOwned          String?
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+
+  shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  codes             ProtectedCode[]
+  redemptionRecords RedemptionRecord[]
+  flaggedOrders     FlaggedOrder[]
+  shardStates       ShardState[]
+
+  @@index([shopId, status])
+}
+
+// -----------------------------------------------------------------------------
+// ProtectedCode — individual discount codes within an offer
+// -----------------------------------------------------------------------------
+
+model ProtectedCode {
+  id               String @id @default(cuid())
+  protectedOfferId String
+  code             String
+  codeUpper        String
+
+  discountNodeId         String?
+  isAppOwned             Boolean @default(false)
+  replacedDiscountNodeId String?
+
+  addedAt    DateTime  @default(now())
+  archivedAt DateTime?
+
+  protectedOffer ProtectedOffer @relation(fields: [protectedOfferId], references: [id], onDelete: Cascade)
+
+  @@unique([protectedOfferId, codeUpper])
+  @@index([codeUpper])
+}
+
+// -----------------------------------------------------------------------------
+// RedemptionRecord — one row per successful redemption of a protected code
+// -----------------------------------------------------------------------------
+
+model RedemptionRecord {
+  id               String @id @default(cuid())
+  shopId           String
+  protectedOfferId String
+
+  orderGid  String
+  orderName String
+  codeUsed  String
+
+  customerGid String?
+
+  emailCiphertext   String?
+  phoneCiphertext   String?
+  addressCiphertext String?
+  ipCiphertext      String?
+
+  phoneHash          String?
+  emailCanonicalHash String?
+  addressFullHash    String?
+  ipHash24           String?
+
+  emailMinhashSketch   String?
+  addressMinhashSketch String?
+
+  createdAt DateTime @default(now())
+
+  shop           Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  protectedOffer ProtectedOffer @relation(fields: [protectedOfferId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, orderGid, protectedOfferId])
+  @@index([shopId, protectedOfferId, phoneHash])
+  @@index([shopId, protectedOfferId, emailCanonicalHash])
+  @@index([shopId, protectedOfferId, addressFullHash])
+  @@index([shopId, protectedOfferId, ipHash24])
+  @@index([shopId, protectedOfferId, createdAt])
+  @@index([customerGid])
+}
+
+// -----------------------------------------------------------------------------
+// ShardState — tracks the 5 metafield shards per protected offer
+// -----------------------------------------------------------------------------
+
+model ShardState {
+  id               String @id @default(cuid())
+  protectedOfferId String
+  shardKey         String
+
+  metafieldGid       String?
+  metafieldNamespace String
+  metafieldKey       String
+
+  byteSize       Int     @default(0)
+  entryCount     Int     @default(0)
+  oldestRecordId String?
+  newestRecordId String?
+
+  lastRebuiltAt DateTime?
+  version       Int       @default(0)
+
+  protectedOffer ProtectedOffer @relation(fields: [protectedOfferId], references: [id], onDelete: Cascade)
+
+  @@unique([protectedOfferId, shardKey])
+}
+
+// -----------------------------------------------------------------------------
+// FlaggedOrder — post-order risk flags (MEDIUM or HIGH)
+// -----------------------------------------------------------------------------
+
+model FlaggedOrder {
+  id               String @id @default(cuid())
+  shopId           String
+  protectedOfferId String
+
+  orderGid    String
+  orderName   String
+  customerGid String?
+
+  riskLevel String
+  score     Int
+  facts     String
+
+  riskAssessmentGid String?
+  tagged            Boolean @default(false)
+
+  merchantAction   String    @default("pending")
+  merchantActionAt DateTime?
+  merchantActorId  String?
+
+  createdAt DateTime @default(now())
+
+  shop           Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  protectedOffer ProtectedOffer @relation(fields: [protectedOfferId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, orderGid])
+  @@index([shopId, merchantAction])
+  @@index([shopId, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// Job — background work queue
+// -----------------------------------------------------------------------------
+
+model Job {
+  id       String  @id @default(cuid())
+  shopId   String
+  type     String
+  status   String  @default("pending")
+  payload  String
+  progress Int     @default(0)
+  total    Int     @default(0)
+  error    String?
+  attempts Int     @default(0)
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, status])
+  @@index([status, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// WebhookEvent — idempotency + replay log for incoming Shopify webhooks
+// -----------------------------------------------------------------------------
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  shopId      String
+  topic       String
+  webhookGid  String    @unique
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  status      String    @default("pending")
+  error       String?
+  payloadHash String
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, topic, receivedAt])
+}
+
+// -----------------------------------------------------------------------------
+// AuditLog — merchant actions for support + compliance
+// -----------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  shopId     String
+  actorType  String
+  actorId    String?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, createdAt])
+  @@index([shopId, action])
+}
+
+// -----------------------------------------------------------------------------
+// ComplianceRequest — GDPR mandatory webhooks
+// -----------------------------------------------------------------------------
+
+model ComplianceRequest {
+  id          String    @id @default(cuid())
+  shopId      String
+  topic       String
+  customerGid String?
+  payload     String
+  receivedAt  DateTime  @default(now())
+  completedAt DateTime?
+  status      String    @default("pending")
+  error       String?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId, topic, status])
+}
+
+// -----------------------------------------------------------------------------
+// Session — from Shopify Remix template (unchanged)
+// -----------------------------------------------------------------------------
 
 model Session {
   id            String    @id
@@ -29,6 +303,7 @@ model Session {
   locale        String?
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
+
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
