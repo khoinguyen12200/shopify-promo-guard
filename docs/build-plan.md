@@ -473,7 +473,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T35. Offer detail page + stats
+### ☑ T35. Offer detail page + stats
 **Specs:** `docs/admin-ui-spec.md §6`
 **Depends:** T30
 **Files:**
