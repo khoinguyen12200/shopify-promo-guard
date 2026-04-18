@@ -67,7 +67,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 1 — Shared hash/normalize/score contract
 
-### ☐ T05. `shared-rust/` skeleton
+### ☑ T05. `shared-rust/` skeleton
 **Specs:** `docs/build-orchestration-spec.md §5`
 **Depends:** none
 **Files:**
