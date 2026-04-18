@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "salt_utf8": "test-salt-xyz",
+  "fnv1a_32": [
+    {"input_utf8": "", "hex": "811c9dc5"},
+    {"input_utf8": "a", "hex": "e40c292c"},
+    {"input_utf8": "hello", "hex": "4f9f2cab"},
+    {"input_utf8": "khoinguyen@gmail.com", "hex": "48d63c41"}
+  ],
+  "fnv1a_salted": [
+    {"input_utf8": "", "hex": "cdcc61a2"},
+    {"input_utf8": "khoinguyen@gmail.com", "hex": "84956b56"}
+  ],
+  "hash_for_lookup": [
+    {"tag": "email_canonical", "value_utf8": "khoinguyen@gmail.com", "hex": "63c49bd1"},
+    {"tag": "phone", "value_utf8": "+14155550123", "hex": "671d3dc5"},
+    {"tag": "addr_full", "value_utf8": "1 main st 94102 us", "hex": "bf07fb4a"},
+    {"tag": "ip_v4_24", "value_utf8": "192.168.1", "hex": "c7f67cb3"}
+  ]
+}

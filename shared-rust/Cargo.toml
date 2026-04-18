@@ -10,5 +10,8 @@ path = "src/lib.rs"
 [dependencies]
 # No external deps — per docs/normalization-spec.md Invariant 4 (Function extensions are constrained).
 
+# Dev-only deps: used to deserialize docs/test-fixtures/hash-vectors.json in
+# shared-rust/tests/fixture_vectors.rs. They never ship with the Function wasm.
 [dev-dependencies]
-# (empty for now; fixture tests come in T06)
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"

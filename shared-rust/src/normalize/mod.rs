@@ -2,4 +2,6 @@
 //!
 //! See: docs/normalization-spec.md §2–§4
 
-// populated in T07–T09.
+pub mod email;
+pub mod phone;
+pub mod address;
