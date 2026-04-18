@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "salt_utf8": "test-salt-xyz",
+  "note": "bottom-K MinHash, K=4. fnv1a_salted(salt, trigram_bytes) for each trigram; sort ascending; take 4 smallest; pad with 0xffffffff.",
+  "sketches": [
+    {
+      "label": "khoinguyen (email local-part trigrams)",
+      "trigrams": ["kho", "hoi", "oin", "ing", "ngu", "guy", "uye", "yen"],
+      "expected_sketch": [466682748, 733189310, 846147091, 1741988834]
+    },
+    {
+      "label": "main st (4 address trigrams)",
+      "trigrams": ["mai", "ain", " st", "t  "],
+      "expected_sketch": [222153778, 810471649, 3647606906, 4159444007]
+    },
+    {
+      "label": "single trigram — pads with 0xffffffff",
+      "trigrams": ["abc"],
+      "expected_sketch": [2927993670, 4294967295, 4294967295, 4294967295]
+    },
+    {
+      "label": "empty set — all 0xffffffff",
+      "trigrams": [],
+      "expected_sketch": [4294967295, 4294967295, 4294967295, 4294967295]
+    }
+  ],
+  "jaccard": [
+    {
+      "label": "identical sketches → 1.0",
+      "sketch_a": [466682748, 733189310, 846147091, 1741988834],
+      "sketch_b": [466682748, 733189310, 846147091, 1741988834],
+      "expected": 1.0
+    },
+    {
+      "label": "disjoint sketches → 0.0",
+      "sketch_a": [466682748, 733189310, 846147091, 1741988834],
+      "sketch_b": [222153778, 810471649, 3647606906, 4159444007],
+      "expected": 0.0
+    },
+    {
+      "label": "0.5 overlap (2 of 4 smallest in union are shared)",
+      "sketch_a": [466682748, 733189310, 846147091, 1741988834],
+      "sketch_b": [466682748, 1741988834, 1869618924, 2441791470],
+      "expected": 0.5
+    },
+    {
+      "label": "0.25 overlap (1 of 4 smallest in union is shared)",
+      "sketch_a": [466682748, 733189310, 846147091, 1741988834],
+      "sketch_b": [1741988834, 2576159517, 2927993670, 2997788190],
+      "expected": 0.25
+    }
+  ]
+}
