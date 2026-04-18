@@ -15,11 +15,15 @@ import "dotenv/config";
 
 import { handleAppUninstalled } from "../jobs/handle-app-uninstalled.js";
 import { handleComplianceShopRedact } from "../jobs/compliance-shop-redact.js";
+import { handleOrdersPaid } from "../jobs/handle-orders-paid.js";
+import { handleShardAppend } from "../jobs/shard-append.js";
 import { runJobBatch, type JobRegistry } from "../lib/jobs.server.js";
 
 const registry: JobRegistry = {
   app_uninstalled: handleAppUninstalled as JobRegistry[string],
   compliance_shop_redact: handleComplianceShopRedact as JobRegistry[string],
+  orders_paid: handleOrdersPaid as JobRegistry[string],
+  shard_append: handleShardAppend as JobRegistry[string],
 };
 
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS ?? 2000);

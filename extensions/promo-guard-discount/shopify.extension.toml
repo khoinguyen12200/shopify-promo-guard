@@ -1,0 +1,23 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "t:name"
+handle = "promo-guard-discount"
+type = "function"
+uid = "b44b28de-ae02-d033-2f06-c9cffcea2e2a0867ba5d"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart_lines_discounts_generate_run"
+
+  [[extensions.targeting]]
+  target = "cart.delivery-options.discounts.generate.run"
+  input_query = "src/cart_delivery_options_discounts_generate_run.graphql"
+  export = "cart_delivery_options_discounts_generate_run"
+
+  [extensions.build]
+  command = "cargo build --target=wasm32-unknown-unknown --release"
+  path = "target/wasm32-unknown-unknown/release/promo-guard-discount.wasm"
+  watch = [ "src/**/*.rs" ]

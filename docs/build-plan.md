@@ -226,7 +226,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T17. Shard metafield read/write
+### ☑ T17. Shard metafield read/write
 **Specs:** `docs/webhook-spec.md §5 (shard_append sub-job)` · `docs/function-queries-spec.md §2`
 **Depends:** T11, T16
 **Files:**
@@ -256,7 +256,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T19. `app/uninstalled` handler
+### ☑ T19. `app/uninstalled` handler
 **Specs:** `docs/webhook-spec.md §6`
 **Depends:** T14
 **Files:**
@@ -269,7 +269,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T20. `customers/data_request` handler
+### ☑ T20. `customers/data_request` handler
 **Specs:** `docs/webhook-spec.md §7`
 **Depends:** T04, T14, T15
 **Files:**
@@ -283,7 +283,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T21. `customers/redact` handler
+### ☑ T21. `customers/redact` handler
 **Specs:** `docs/webhook-spec.md §7`
 **Depends:** T17, T20
 **Files:**
@@ -297,7 +297,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T22. `shop/redact` handler
+### ☑ T22. `shop/redact` handler
 **Specs:** `docs/webhook-spec.md §7`
 **Depends:** T14, T15
 **Files:**

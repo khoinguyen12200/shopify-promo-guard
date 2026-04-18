@@ -84,6 +84,8 @@ module.exports = {
         ".graphqlrc.{js,ts}",
         "shopify.server.{js,ts}",
         "**/*.server.{js,ts}",
+        "extensions/*/tests/**/*.{js,ts}",
+        "extensions/*/vitest.config.{js,ts}",
       ],
       env: {
         node: true,

@@ -74,7 +74,7 @@ check-prereqs: ## Verify required tools are installed
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker missing — install Docker Desktop"; exit 1; }
 	@command -v shopify >/dev/null 2>&1 || { echo "❌ shopify CLI missing — npm i -g @shopify/cli@latest"; exit 1; }
 	@command -v cargo >/dev/null 2>&1 || { echo "❌ cargo missing — install via rustup (https://rustup.rs)"; exit 1; }
-	@rustup target list --installed 2>/dev/null | grep -q wasm32-wasip1 || { echo "❌ wasm32-wasip1 target missing — run: rustup target add wasm32-wasip1"; exit 1; }
+	@rustup target list --installed 2>/dev/null | grep -q wasm32-unknown-unknown || { echo "❌ wasm32-unknown-unknown target missing — run: rustup target add wasm32-unknown-unknown"; exit 1; }
 	@node -e "const v=process.versions.node.split('.').map(Number); if(v[0]<20){process.exit(1)}" || { echo "❌ Node 20+ required, got $$(node -v)"; exit 1; }
 	@echo "✅ prereqs OK"
 
@@ -205,7 +205,7 @@ lint: ## Run linters
 	npm run lint
 	@for ext in $(RUST_EXTENSIONS); do \
 		if [ -d extensions/$$ext ]; then \
-			(cd extensions/$$ext && cargo clippy --target=wasm32-wasip1 -- -D warnings) || exit 1; \
+			(cd extensions/$$ext && cargo clippy --target=wasm32-unknown-unknown -- -D warnings) || exit 1; \
 		fi; \
 	done
 

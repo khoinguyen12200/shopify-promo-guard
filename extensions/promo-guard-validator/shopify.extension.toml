@@ -1,0 +1,18 @@
+api_version = "2026-01"
+
+[[extensions]]
+name = "t:name"
+handle = "promo-guard-validator"
+type = "function"
+uid = "5552cf79-f980-d5da-6d5d-3d2b37f49af8ed809cd4"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.validations.generate.run"
+  input_query = "src/cart_validations_generate_run.graphql"
+  export = "cart_validations_generate_run"
+
+  [extensions.build]
+  command = "cargo build --target=wasm32-unknown-unknown --release"
+  path = "target/wasm32-unknown-unknown/release/promo-guard-validator.wasm"
+  watch = ["src/**/*.rs"]
