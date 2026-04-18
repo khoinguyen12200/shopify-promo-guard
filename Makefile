@@ -33,12 +33,15 @@ setup: check-prereqs install db-up db-migrate functions-schema seed ## First-tim
 	@echo "✅ Setup complete. Next: run 'make dev'."
 
 .PHONY: dev
-dev: db-up ## Start all dev processes (Remix, Shopify CLI, worker, prisma studio)
+dev: db-up ## Start all dev processes (Remix + Shopify CLI); worker in a separate terminal via `make worker`
 	@echo "Starting dev processes. Ctrl+C to stop."
-	@# `shopify app dev` runs the Remix app + extension watchers + tunnel.
-	@# The worker runs in a separate terminal for now (see docs/webhook-spec.md).
-	@# TODO (task T15): wire a process manager (overmind/foreman) here.
-	shopify app dev
+	@# `shopify app dev` runs the Remix app + extension watchers + a
+	@# cloudflared tunnel (needed so Shopify can POST webhooks to your
+	@# laptop). cloudflared must be on PATH — install via:
+	@#   brew install cloudflared
+	@# To override with a different tunnel (e.g. ngrok):
+	@#   TUNNEL_URL=https://…  make dev
+	shopify app dev $(if $(TUNNEL_URL),--tunnel-url $(TUNNEL_URL))
 
 .PHONY: worker
 worker: ## Run the background job worker (separate terminal from `make dev`)
@@ -73,6 +76,7 @@ check-prereqs: ## Verify required tools are installed
 	@command -v npm >/dev/null 2>&1 || { echo "❌ npm missing"; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker missing — install Docker Desktop"; exit 1; }
 	@command -v shopify >/dev/null 2>&1 || { echo "❌ shopify CLI missing — npm i -g @shopify/cli@latest"; exit 1; }
+	@command -v cloudflared >/dev/null 2>&1 || { echo "❌ cloudflared missing — brew install cloudflared (avoids Shopify CLI fetching it over flaky GitHub releases)"; exit 1; }
 	@command -v cargo >/dev/null 2>&1 || { echo "❌ cargo missing — install via rustup (https://rustup.rs)"; exit 1; }
 	@rustup target list --installed 2>/dev/null | grep -q wasm32-unknown-unknown || { echo "❌ wasm32-unknown-unknown target missing — run: rustup target add wasm32-unknown-unknown"; exit 1; }
 	@node -e "const v=process.versions.node.split('.').map(Number); if(v[0]<20){process.exit(1)}" || { echo "❌ Node 20+ required, got $$(node -v)"; exit 1; }
