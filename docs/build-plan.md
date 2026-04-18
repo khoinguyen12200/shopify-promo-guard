@@ -714,7 +714,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T52. Production secrets + env
+### ☑ T52. Production secrets + env
 **Specs:** `CLAUDE.md § Infrastructure`
 **Depends:** T51
 **Files:**
