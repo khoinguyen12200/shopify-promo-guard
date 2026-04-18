@@ -95,7 +95,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T07. Email normalization + trigrams
+### ☑ T07. Email normalization + trigrams
 **Specs:** `docs/normalization-spec.md §1, §4`
 **Depends:** T06
 **Files:**
@@ -108,7 +108,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T08. Phone E.164 normalization
+### ☑ T08. Phone E.164 normalization
 **Specs:** `docs/normalization-spec.md §2`
 **Depends:** T06
 **Files:**
@@ -121,7 +121,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T09. Address normalization + house key
+### ☑ T09. Address normalization + house key
 **Specs:** `docs/normalization-spec.md §3, §4`
 **Depends:** T06
 **Files:**
@@ -134,7 +134,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T10. MinHash bottom-K + Jaccard
+### ☑ T10. MinHash bottom-K + Jaccard
 **Specs:** `docs/normalization-spec.md §6`
 **Depends:** T07, T09
 **Files:**
@@ -147,7 +147,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T11. Scoring constants + weights
+### ☑ T11. Scoring constants + weights
 **Specs:** `docs/scoring-spec.md §3`
 **Depends:** T06
 **Files:**
@@ -160,7 +160,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T12. Post-order scoring (Node)
+### ☑ T12. Post-order scoring (Node)
 **Specs:** `docs/scoring-spec.md §5.2, §10`
 **Depends:** T04, T07–T11
 **Files:**
@@ -172,7 +172,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T13. Checkout scoring (shared-rust, not yet in a Function)
+### ☑ T13. Checkout scoring (shared-rust, not yet in a Function)
 **Specs:** `docs/scoring-spec.md §5.1, §10`
 **Depends:** T07–T11
 **Files:**
@@ -612,7 +612,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 8 — Platform admin
 
-### ☐ T45. Platform-admin Prisma additions + magic-link auth
+### ☑ T45. Platform-admin Prisma additions + magic-link auth
 **Specs:** `docs/platform-admin-spec.md §2, §17`
 **Depends:** T02, T03
 **Files:**
