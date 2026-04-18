@@ -1,0 +1,439 @@
+/**
+ * See: docs/landing-page-spec.md §4
+ *
+ * Public marketing site styles. No Polaris. Standalone, system fonts only
+ * (no external font loading) to keep LCP under 1.2s on simulated 4G.
+ */
+
+/* --- reset / base ------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  color: #1a1a1a;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  background: #ffffff;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  color: #0057ff;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  margin: 0 0 0.5em;
+  color: #0a0a0a;
+}
+
+p {
+  margin: 0 0 1em;
+}
+
+/* --- layout primitives -------------------------------------------------- */
+
+.pg-public {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.pg-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* --- header / nav ------------------------------------------------------- */
+
+.pg-public__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem;
+  width: 100%;
+}
+
+.pg-public__brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: #0a0a0a;
+  letter-spacing: -0.01em;
+}
+
+.pg-public__header nav {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.pg-public__header nav a {
+  color: #333;
+  font-size: 0.95rem;
+}
+
+.pg-public__cta {
+  background: #0057ff;
+  color: #fff !important;
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.pg-public__cta:hover {
+  background: #0047cc;
+  text-decoration: none;
+}
+
+/* --- buttons ------------------------------------------------------------ */
+
+.pg-btn {
+  display: inline-block;
+  padding: 0.75rem 1.25rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 1rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.pg-btn--primary {
+  background: #0057ff;
+  color: #fff;
+}
+
+.pg-btn--primary:hover {
+  background: #0047cc;
+  text-decoration: none;
+}
+
+.pg-btn--secondary {
+  background: transparent;
+  color: #0057ff;
+  border-color: #0057ff;
+}
+
+.pg-btn--secondary:hover {
+  background: #eff4ff;
+  text-decoration: none;
+}
+
+/* --- hero --------------------------------------------------------------- */
+
+.pg-hero {
+  padding: 4rem 1.25rem 3rem;
+  text-align: center;
+}
+
+.pg-hero__inner {
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.pg-hero__headline {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pg-hero__sub {
+  font-size: 1.125rem;
+  color: #444;
+  margin: 1rem auto 2rem;
+  max-width: 640px;
+}
+
+.pg-hero__ctas {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.pg-hero__social {
+  font-size: 0.95rem;
+  color: #555;
+}
+
+.pg-hero__stars {
+  color: #f5a623;
+  letter-spacing: 0.1em;
+  margin-right: 0.4em;
+}
+
+/* --- problem block ------------------------------------------------------ */
+
+.pg-problem {
+  padding: 3rem 1.25rem;
+  background: #f7f7f8;
+}
+
+.pg-problem__inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.pg-problem__heading {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.pg-problem__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.pg-problem__list li {
+  background: #fff;
+  padding: 1.25rem;
+  border-radius: 8px;
+  border: 1px solid #e6e6e8;
+  font-size: 1rem;
+}
+
+/* --- three-step --------------------------------------------------------- */
+
+.pg-three-step {
+  padding: 3rem 1.25rem;
+}
+
+.pg-three-step__inner {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.pg-three-step__heading {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.pg-three-step__steps {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.pg-three-step__step {
+  background: #fff;
+  border: 1px solid #e6e6e8;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.pg-three-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #0057ff;
+  color: #fff;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+/* --- comparison table --------------------------------------------------- */
+
+.pg-compare {
+  padding: 3rem 1.25rem;
+  background: #f7f7f8;
+}
+
+.pg-compare__inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.pg-compare__heading {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.pg-compare__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #e6e6e8;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.95rem;
+}
+
+.pg-compare__table th,
+.pg-compare__table td {
+  padding: 0.9rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+.pg-compare__table th {
+  background: #fafafa;
+  font-weight: 600;
+  color: #333;
+}
+
+.pg-compare__table tr:last-child td {
+  border-bottom: none;
+}
+
+.pg-compare__bad {
+  color: #a33;
+}
+
+.pg-compare__good {
+  color: #1f7a4c;
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .pg-compare__table th,
+  .pg-compare__table td {
+    padding: 0.65rem 0.6rem;
+    font-size: 0.85rem;
+  }
+}
+
+/* --- FAQ accordion ------------------------------------------------------ */
+
+.pg-faq {
+  padding: 3rem 1.25rem;
+}
+
+.pg-faq__inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.pg-faq__heading {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.pg-faq__item {
+  border: 1px solid #e6e6e8;
+  border-radius: 8px;
+  background: #fff;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem 1rem;
+}
+
+.pg-faq__item summary {
+  cursor: pointer;
+  padding: 0.85rem 0;
+  font-weight: 600;
+  list-style: none;
+  position: relative;
+  padding-right: 1.5rem;
+}
+
+.pg-faq__item summary::-webkit-details-marker {
+  display: none;
+}
+
+.pg-faq__item summary::after {
+  content: "+";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.25rem;
+  color: #666;
+}
+
+.pg-faq__item[open] summary::after {
+  content: "−";
+}
+
+.pg-faq__answer {
+  padding: 0 0 0.85rem;
+  color: #444;
+}
+
+/* --- footer ------------------------------------------------------------- */
+
+.pg-footer {
+  margin-top: auto;
+  border-top: 1px solid #e6e6e8;
+  padding: 2rem 1.25rem;
+  background: #fafafa;
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.pg-footer__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.pg-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.pg-footer__links a {
+  color: #444;
+}
+
+/* --- responsive --------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .pg-public__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .pg-public__header nav {
+    flex-wrap: wrap;
+  }
+
+  .pg-hero {
+    padding: 2.5rem 1.25rem 2rem;
+  }
+}
