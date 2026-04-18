@@ -389,6 +389,229 @@ p {
   color: #444;
 }
 
+/* --- pricing page ------------------------------------------------------- */
+
+.pg-pricing {
+  padding: 3.5rem 1.25rem 2rem;
+}
+
+.pg-pricing__inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.pg-pricing__heading {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  letter-spacing: -0.02em;
+}
+
+.pg-pricing__sub {
+  font-size: 1.05rem;
+  color: #444;
+  max-width: 680px;
+  margin: 0.5rem auto 2.5rem;
+}
+
+.pg-pricing__tiers {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-bottom: 2rem;
+  text-align: left;
+}
+
+.pg-pricing__tier {
+  background: #fff;
+  border: 1px solid #e6e6e8;
+  border-radius: 10px;
+  padding: 1.75rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pg-pricing__tier-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pg-pricing__tier-price {
+  margin: 0;
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #0a0a0a;
+  letter-spacing: -0.02em;
+}
+
+.pg-pricing__tier-unit {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #666;
+}
+
+.pg-pricing__tier-cap {
+  margin: 0;
+  font-size: 1rem;
+  color: #333;
+}
+
+.pg-pricing__tier-features {
+  margin: 0 0 0.5rem;
+  color: #555;
+}
+
+.pg-pricing__tier-cta {
+  margin-top: auto;
+  text-align: center;
+}
+
+.pg-pricing__enterprise {
+  font-size: 0.95rem;
+  color: #555;
+}
+
+/* --- long-form doc (privacy, security, terms) --------------------------- */
+
+.pg-doc {
+  padding: 3rem 1.25rem 4rem;
+}
+
+.pg-doc__inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.pg-doc__heading {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.5rem;
+}
+
+.pg-doc__updated {
+  color: #777;
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+.pg-doc__lede {
+  font-size: 1.05rem;
+  color: #333;
+  margin-bottom: 2rem;
+}
+
+.pg-doc section {
+  margin-bottom: 1.75rem;
+}
+
+.pg-doc h2 {
+  font-size: 1.25rem;
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.pg-doc ul {
+  padding-left: 1.25rem;
+  margin: 0 0 1em;
+}
+
+.pg-doc li {
+  margin-bottom: 0.35rem;
+}
+
+.pg-doc code {
+  background: #f2f2f4;
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* --- install form ------------------------------------------------------- */
+
+.pg-install {
+  padding: 4rem 1.25rem;
+}
+
+.pg-install__inner {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.pg-install__heading {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  letter-spacing: -0.02em;
+}
+
+.pg-install__sub {
+  color: #444;
+  margin-bottom: 2rem;
+}
+
+.pg-install__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e6e6e8;
+  border-radius: 10px;
+  padding: 1.5rem;
+}
+
+.pg-install__label {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #222;
+}
+
+.pg-install__input {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #ccd;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.pg-install__input:focus {
+  outline: 2px solid #0057ff;
+  outline-offset: 1px;
+  border-color: #0057ff;
+}
+
+.pg-install__input[aria-invalid="true"] {
+  border-color: #a33;
+}
+
+.pg-install__error {
+  color: #a33;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.pg-install__submit {
+  margin-top: 0.75rem;
+  align-self: stretch;
+  text-align: center;
+}
+
+.pg-install__hint {
+  margin-top: 1.25rem;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.pg-install__hint code {
+  background: #f2f2f4;
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
 /* --- footer ------------------------------------------------------------- */
 
 .pg-footer {
