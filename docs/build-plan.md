@@ -498,7 +498,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T37. Delete offer with restore option
+### ☑ T37. Delete offer with restore option
 **Specs:** `docs/admin-ui-spec.md §6 (Delete confirmation)`
 **Depends:** T34, T35
 **Files:**

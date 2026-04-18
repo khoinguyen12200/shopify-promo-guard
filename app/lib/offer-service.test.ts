@@ -11,11 +11,35 @@ const updateManyMock = vi.fn(
     return { count: 1 };
   },
 );
+const findFirstMock = vi.fn(async (args: unknown): Promise<unknown> => {
+  void args;
+  return null;
+});
+const updateMock = vi.fn(async (args: unknown): Promise<unknown> => {
+  void args;
+  return {};
+});
+const codeUpdateManyMock = vi.fn(
+  async (args: unknown): Promise<{ count: number }> => {
+    void args;
+    return { count: 1 };
+  },
+);
+const transactionMock = vi.fn(async (ops: Promise<unknown>[]) => {
+  return Promise.all(ops);
+});
+
 vi.mock("../db.server.js", () => ({
   default: {
     protectedOffer: {
       updateMany: (args: unknown) => updateManyMock(args),
+      findFirst: (args: unknown) => findFirstMock(args),
+      update: (args: unknown) => updateMock(args),
     },
+    protectedCode: {
+      updateMany: (args: unknown) => codeUpdateManyMock(args),
+    },
+    $transaction: (ops: Promise<unknown>[]) => transactionMock(ops),
   },
 }));
 
@@ -24,6 +48,7 @@ import { ShopifyUserError } from "./admin-graphql.server.js";
 import {
   __resetFunctionIdCacheForTests,
   createNewProtectedDiscount,
+  deleteOffer,
   discountCodeDeactivate,
   getDiscountFunctionId,
   readNativeDiscountByCode,
@@ -60,6 +85,16 @@ beforeEach(() => {
   __resetFunctionIdCacheForTests();
   updateManyMock.mockClear();
   updateManyMock.mockImplementation(async () => ({ count: 1 }));
+  findFirstMock.mockClear();
+  findFirstMock.mockImplementation(async () => null);
+  updateMock.mockClear();
+  updateMock.mockImplementation(async () => ({}));
+  codeUpdateManyMock.mockClear();
+  codeUpdateManyMock.mockImplementation(async () => ({ count: 1 }));
+  transactionMock.mockClear();
+  transactionMock.mockImplementation(async (ops: Promise<unknown>[]) =>
+    Promise.all(ops),
+  );
 });
 
 // -- getDiscountFunctionId --------------------------------------------------
@@ -552,5 +587,121 @@ describe("updateOfferFields", () => {
     });
     expect(result.updated).toBe(false);
     expect(updateManyMock).not.toHaveBeenCalled();
+  });
+});
+
+// -- deleteOffer (T37) -----------------------------------------------------
+
+describe("deleteOffer", () => {
+  function loadOffer(codes: unknown[]) {
+    findFirstMock.mockImplementationOnce(async () => ({
+      id: "offer-1",
+      shopId: "shop-1",
+      codes,
+    }));
+  }
+
+  it("restore path: deactivates replacement BEFORE activating the original", async () => {
+    loadOffer([
+      {
+        id: "code-1",
+        code: "WELCOME10",
+        codeUpper: "WELCOME10",
+        discountNodeId: "gid://shopify/DiscountNode/new",
+        isAppOwned: true,
+        replacedDiscountNodeId: "gid://shopify/DiscountNode/old",
+      },
+    ]);
+
+    const order: string[] = [];
+    const client = vi.fn(async (query: string) => {
+      if (query.includes("discountCodeDeactivate")) order.push("deactivate");
+      if (query.includes("discountCodeActivate")) order.push("activate");
+      return {
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          data: query.includes("discountCodeDeactivate")
+            ? {
+                discountCodeDeactivate: {
+                  codeDiscountNode: { id: "x" },
+                  userErrors: [],
+                },
+              }
+            : {
+                discountCodeActivate: {
+                  codeDiscountNode: { id: "y" },
+                  userErrors: [],
+                },
+              },
+        }),
+      };
+    }) as unknown as AdminGqlClient;
+
+    const result = await deleteOffer(client, {
+      offerId: "offer-1",
+      shopId: "shop-1",
+      restoreReplaced: true,
+    });
+
+    expect(result.restoredDiscountNodeIds).toEqual([
+      "gid://shopify/DiscountNode/old",
+    ]);
+    expect(order).toEqual(["deactivate", "activate"]);
+    // Soft-delete happened: codes archived + offer archived in a transaction.
+    expect(codeUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("delete path: deactivates replacement, does NOT touch original", async () => {
+    loadOffer([
+      {
+        id: "code-1",
+        code: "WELCOME10",
+        codeUpper: "WELCOME10",
+        discountNodeId: "gid://shopify/DiscountNode/new",
+        isAppOwned: true,
+        replacedDiscountNodeId: "gid://shopify/DiscountNode/old",
+      },
+    ]);
+
+    const order: string[] = [];
+    const client = vi.fn(async (query: string) => {
+      if (query.includes("discountCodeDeactivate")) order.push("deactivate");
+      if (query.includes("discountCodeActivate")) order.push("activate");
+      return {
+        status: 200,
+        headers: new Headers(),
+        json: async () => ({
+          data: {
+            discountCodeDeactivate: {
+              codeDiscountNode: { id: "x" },
+              userErrors: [],
+            },
+          },
+        }),
+      };
+    }) as unknown as AdminGqlClient;
+
+    const result = await deleteOffer(client, {
+      offerId: "offer-1",
+      shopId: "shop-1",
+      restoreReplaced: false,
+    });
+
+    expect(result.restoredDiscountNodeIds).toEqual([]);
+    expect(order).toEqual(["deactivate"]);
+  });
+
+  it("throws when the offer doesn't exist for this shop", async () => {
+    findFirstMock.mockImplementationOnce(async () => null);
+    const client = vi.fn() as unknown as AdminGqlClient;
+    await expect(
+      deleteOffer(client, {
+        offerId: "missing",
+        shopId: "shop-1",
+        restoreReplaced: false,
+      }),
+    ).rejects.toThrow(/not found/i);
   });
 });

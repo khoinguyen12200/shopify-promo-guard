@@ -516,3 +516,139 @@ export async function updateOfferFields(
   }
   return { updated: true };
 }
+
+// -- Delete with restore option (T37) --------------------------------------
+
+const DISCOUNT_CODE_ACTIVATE = /* GraphQL */ `
+  mutation DiscountCodeActivate($id: ID!) {
+    discountCodeActivate(id: $id) {
+      codeDiscountNode {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+interface DiscountCodeActivateData {
+  discountCodeActivate: {
+    codeDiscountNode: { id: string } | null;
+    userErrors: Array<{
+      field?: string[] | null;
+      message: string;
+      code?: string | null;
+    }>;
+  };
+}
+
+/**
+ * Reactivate a previously-deactivated native discount, used when the merchant
+ * deletes a protected offer and asks to restore the originals.
+ *
+ * Caveat: the replacement app-owned discount with the same code must be
+ * deactivated first (enforced by caller flow in deleteOffer) — otherwise
+ * Shopify rejects with the usual uniqueness error.
+ */
+export async function discountCodeActivate(
+  client: AdminGqlClient,
+  discountNodeId: string,
+): Promise<void> {
+  const body = await runGql<DiscountCodeActivateData>(
+    client,
+    DISCOUNT_CODE_ACTIVATE,
+    { id: discountNodeId },
+    "discountCodeActivate",
+  );
+  const payload = body.data?.discountCodeActivate;
+  if (payload?.userErrors && payload.userErrors.length > 0) {
+    throw new ShopifyUserError(payload.userErrors);
+  }
+}
+
+export interface DeleteOfferInput {
+  offerId: string;
+  shopId: string;
+  /** When true, reactivate the replaced native discounts after deactivating our app-owned ones. */
+  restoreReplaced: boolean;
+}
+
+export interface DeleteOfferResult {
+  restoredDiscountNodeIds: string[];
+}
+
+/**
+ * Soft-delete a protected offer (ProtectedOffer.archivedAt = now). Child
+ * RedemptionRecord / FlaggedOrder rows are preserved so history and audit
+ * trails survive.
+ *
+ * When `restoreReplaced` is true, for every ProtectedCode that has a
+ * `replacedDiscountNodeId`:
+ *   1. Deactivate the app-owned replacement (`discountNodeId`) — uniqueness
+ *      on the code string forces this to happen first.
+ *   2. Reactivate the original via `discountCodeActivate`.
+ *
+ * Best-effort: if step 1 or 2 fails for a given code, the error is re-thrown
+ * so the caller can surface it; the offer is NOT archived in that case so
+ * the merchant can retry.
+ */
+export async function deleteOffer(
+  client: AdminGqlClient,
+  input: DeleteOfferInput,
+): Promise<DeleteOfferResult> {
+  const offer = await prisma.protectedOffer.findFirst({
+    where: {
+      id: input.offerId,
+      shopId: input.shopId,
+      archivedAt: null,
+    },
+    include: {
+      codes: {
+        where: { archivedAt: null },
+      },
+    },
+  });
+  if (!offer) {
+    throw new Error("deleteOffer: offer not found or already archived");
+  }
+
+  const restored: string[] = [];
+  if (input.restoreReplaced) {
+    for (const code of offer.codes) {
+      if (!code.replacedDiscountNodeId) continue;
+
+      // Deactivate the app-owned replacement FIRST so we don't hit
+      // code-string uniqueness when reactivating the original.
+      if (code.discountNodeId && code.isAppOwned) {
+        await discountCodeDeactivate(client, code.discountNodeId);
+      }
+      await discountCodeActivate(client, code.replacedDiscountNodeId);
+      restored.push(code.replacedDiscountNodeId);
+    }
+  } else {
+    // Not restoring — still deactivate the app-owned replacements so the
+    // codes stop working entirely.
+    for (const code of offer.codes) {
+      if (code.discountNodeId && code.isAppOwned) {
+        await discountCodeDeactivate(client, code.discountNodeId);
+      }
+    }
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.protectedCode.updateMany({
+      where: { protectedOfferId: offer.id, archivedAt: null },
+      data: { archivedAt: now },
+    }),
+    prisma.protectedOffer.update({
+      where: { id: offer.id },
+      data: { archivedAt: now, status: "archived" },
+    }),
+  ]);
+
+  return { restoredDiscountNodeIds: restored };
+}
