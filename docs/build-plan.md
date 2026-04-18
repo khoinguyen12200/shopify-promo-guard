@@ -701,7 +701,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T51. `cloudbuild.yaml` (GCP pipeline)
+### ☑ T51. `cloudbuild.yaml` (GCP pipeline)
 **Specs:** `CLAUDE.md § Infrastructure` · Reference: `~/Projects/shopify-repair-ops/cloudbuild.yaml`
 **Depends:** T50
 **Files:**

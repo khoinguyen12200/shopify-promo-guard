@@ -1,0 +1,112 @@
+# See: CLAUDE.md § Infrastructure
+# Promo Guard GCP build pipeline: build → migrate → push → deploy app,
+# then deploy worker (same image, different CMD — see T53).
+#
+# Expected substitutions (pass via `gcloud builds submit --substitutions`
+# or set in the Cloud Build trigger):
+#   _DATABASE_URL        — Neon pooled connection (runtime)
+#   _DIRECT_DATABASE_URL — Neon unpooled connection (for migrate deploy)
+#   _APP_URL             — https://<cloud-run-service-url>
+# Secrets (APP_KEK_HEX, SHOPIFY_API_SECRET, SESSION_SECRET,
+# MAGIC_LINK_SECRET, PLATFORM_ADMIN_ALLOWED_EMAILS) are wired to the
+# service via --set-secrets (see T52 setup-gcp-secrets.sh).
+
+steps:
+  # ── Step 1: Build production image ─────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build-image
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        IMAGE_TAG="${TAG_NAME:-${SHORT_SHA}}"
+        docker build \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:$${IMAGE_TAG} \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:$COMMIT_SHA \
+          -t us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:latest \
+          -f Dockerfile.prod .
+
+  # ── Step 2: Run migrations BEFORE deploy ───────────────────────────────
+  # Neon unpooled URL ($DIRECT_DATABASE_URL) — Prisma advisory locks need
+  # a direct session.
+  - name: 'gcr.io/cloud-builders/docker'
+    id: run-migrations
+    waitFor: ['build-image']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker run --rm \
+          -e DATABASE_URL="${_DATABASE_URL}" \
+          -e DIRECT_DATABASE_URL="${_DIRECT_DATABASE_URL}" \
+          us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:latest \
+          node_modules/.bin/prisma migrate deploy
+
+  # ── Step 3: Push tags to Artifact Registry ─────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push-image
+    waitFor: ['run-migrations']
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr'
+
+  # ── Step 4: Deploy the web/app Cloud Run service ───────────────────────
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: deploy-app
+    waitFor: ['push-image']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        IMAGE_TAG="${TAG_NAME:-${SHORT_SHA}}"
+        REV_SUFFIX=$$(echo "$${IMAGE_TAG}" | tr '.' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-63)
+        gcloud run deploy promo-guard-ssr \
+          --image us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:$${IMAGE_TAG} \
+          --region us-central1 \
+          --platform managed \
+          --allow-unauthenticated \
+          --memory 512Mi \
+          --min-instances 0 \
+          --max-instances 5 \
+          --revision-suffix "$${REV_SUFFIX}" \
+          --set-env-vars "NODE_ENV=production,SHOPIFY_APP_URL=${_APP_URL}" \
+          --set-secrets "DATABASE_URL=promo-guard-database-url:latest,DIRECT_DATABASE_URL=promo-guard-direct-database-url:latest,SHOPIFY_API_KEY=promo-guard-shopify-api-key:latest,SHOPIFY_API_SECRET=promo-guard-shopify-api-secret:latest,APP_KEK_HEX=promo-guard-app-kek-hex:latest,SESSION_SECRET=promo-guard-session-secret:latest,MAGIC_LINK_SECRET=promo-guard-magic-link-secret:latest,PLATFORM_ADMIN_ALLOWED_EMAILS=promo-guard-platform-admin-allowed-emails:latest"
+
+  # ── Step 5: Deploy the worker Cloud Run service (T53) ──────────────────
+  # Same image, CMD override runs the worker process instead of the web
+  # server. Scales 1-1 to keep polling cadence predictable.
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: deploy-worker
+    waitFor: ['deploy-app']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        IMAGE_TAG="${TAG_NAME:-${SHORT_SHA}}"
+        REV_SUFFIX=$$(echo "$${IMAGE_TAG}" | tr '.' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-63)
+        gcloud run deploy promo-guard-worker \
+          --image us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:$${IMAGE_TAG} \
+          --region us-central1 \
+          --platform managed \
+          --no-allow-unauthenticated \
+          --memory 512Mi \
+          --min-instances 1 \
+          --max-instances 1 \
+          --command "npm" \
+          --args "run,worker" \
+          --revision-suffix "$${REV_SUFFIX}" \
+          --set-env-vars "NODE_ENV=production" \
+          --set-secrets "DATABASE_URL=promo-guard-database-url:latest,DIRECT_DATABASE_URL=promo-guard-direct-database-url:latest,APP_KEK_HEX=promo-guard-app-kek-hex:latest"
+
+substitutions:
+  _DATABASE_URL: ''
+  _DIRECT_DATABASE_URL: ''
+  _APP_URL: ''
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/promo-guard/promo-guard-ssr:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true
