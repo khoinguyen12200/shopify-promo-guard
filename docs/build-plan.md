@@ -511,7 +511,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T38. Flagged orders page
+### ☑ T38. Flagged orders page
 **Specs:** `docs/admin-ui-spec.md §7`
 **Depends:** T18, T35
 **Files:**
