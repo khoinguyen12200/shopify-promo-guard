@@ -1,0 +1,14 @@
+[package]
+name = "promo-guard-shared"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "promo_guard_shared"
+path = "src/lib.rs"
+
+[dependencies]
+# No external deps — per docs/normalization-spec.md Invariant 4 (Function extensions are constrained).
+
+[dev-dependencies]
+# (empty for now; fixture tests come in T06)
