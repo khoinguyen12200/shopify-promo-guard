@@ -12,6 +12,11 @@ import {
   suggestDiscounts,
   type DiscountSuggestion,
 } from "../lib/discount-query.server";
+import {
+  createNewProtectedDiscount,
+  type NewDiscountAmount,
+} from "../lib/offer-service.server";
+import { ShopifyUserError } from "../lib/admin-graphql.server";
 import { authenticate } from "../shopify.server";
 
 // -- Loader -----------------------------------------------------------------
@@ -86,7 +91,7 @@ function parseSelected(raw: FormDataEntryValue | null): SelectedCode[] {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = await prisma.shop.findUnique({
     where: { shopDomain: session.shop },
   });
@@ -95,6 +100,51 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const form = await request.formData();
+  const intent = String(form.get("intent") ?? "submit-offer");
+
+  if (intent === "create-discount") {
+    const code = String(form.get("code") ?? "").trim();
+    const amountKind = String(form.get("amountKind") ?? "percentage");
+    const appliesOncePerCustomer =
+      String(form.get("appliesOncePerCustomer") ?? "1") === "1";
+    const endsAt = String(form.get("endsAt") ?? "") || null;
+
+    let amount: NewDiscountAmount;
+    if (amountKind === "fixed") {
+      const parsed = Number(form.get("fixed") ?? "");
+      amount = { kind: "fixed", amount: parsed };
+    } else {
+      const parsed = Number(form.get("percent") ?? "");
+      amount = { kind: "percentage", percent: parsed };
+    }
+
+    if (!code) {
+      return { ok: false as const, error: "Code is required." };
+    }
+
+    try {
+      const result = await createNewProtectedDiscount(admin.graphql, {
+        code,
+        amount,
+        appliesOncePerCustomer,
+        endsAt,
+      });
+      return {
+        ok: true as const,
+        code: result.code,
+        discountNodeId: result.discountNodeId,
+      };
+    } catch (err) {
+      const message =
+        err instanceof ShopifyUserError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not create discount.";
+      return { ok: false as const, error: message };
+    }
+  }
+
   const name = String(form.get("name") ?? "").trim();
   const mode = String(form.get("mode") ?? "silent_strip");
   const selected = parseSelected(form.get("selectedCodes"));
@@ -158,7 +208,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function NewOffer() {
   const { suggested, other, suggestError } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const rawActionData = useActionData<typeof action>();
+  // Narrow out the create-discount fetcher response shape — it shares the
+  // action URL but is consumed by a fetcher in <CreateNewDiscount/>.
+  const actionData =
+    rawActionData && "fieldErrors" in rawActionData ? rawActionData : undefined;
 
   const fieldErrors = actionData?.fieldErrors;
   const mode = actionData?.values?.mode === "block" ? "block" : "silent_strip";

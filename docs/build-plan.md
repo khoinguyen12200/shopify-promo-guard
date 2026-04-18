@@ -447,7 +447,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T33. Create-new-discount inline subform + Discount Function registration
+### ☑ T33. Create-new-discount inline subform + Discount Function registration
 **Specs:** `docs/admin-ui-spec.md §5 (Case B)` · `docs/system-design.md § Replace-in-place`
 **Depends:** T27, T32
 **Files:**

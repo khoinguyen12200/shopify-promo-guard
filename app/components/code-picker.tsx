@@ -2,9 +2,13 @@
  * See: docs/admin-ui-spec.md §5 (Suggested + Other sections, manual code entry)
  * Related: app/lib/discount-query.server.ts (suggestDiscounts)
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import type { DiscountSuggestion } from "../lib/discount-query.server";
+import {
+  CreateNewDiscount,
+  type CreateNewDiscountResult,
+} from "./create-new-discount";
 
 export type CodePickerSuggestion = DiscountSuggestion;
 
@@ -117,6 +121,27 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
     setSelected((cur) => cur.filter((s) => toUpper(s.code) !== upper));
   }
 
+  const onCreatedManual = useCallback(
+    (result: CreateNewDiscountResult) => {
+      setSelected((cur) => {
+        const upper = toUpper(result.code);
+        if (cur.some((s) => toUpper(s.code) === upper)) return cur;
+        return [
+          ...cur,
+          {
+            code: result.code,
+            discountNodeId: result.discountNodeId,
+            isAppOwned: true,
+            origin: "manual-missing",
+          },
+        ];
+      });
+      setManualMissing(null);
+      setManual("");
+    },
+    [],
+  );
+
   const tabsButton = (which: "suggested" | "other") => (
     <s-button
       key={which}
@@ -191,33 +216,11 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
       </s-stack>
 
       {manualMissing ? (
-        <s-banner
-          tone="info"
-          heading={`No code called "${manualMissing}" exists`}
-        >
-          <s-stack gap="small">
-            <s-text>
-              Create it through Promo Guard? We&apos;ll make an app-owned
-              discount using your Discount Function.
-            </s-text>
-            <s-stack direction="inline" gap="small">
-              <s-button
-                variant="primary"
-                onClick={() => {
-                  // T33: opens the create-new-discount inline subform.
-                  // Placeholder for now.
-                  // eslint-disable-next-line no-alert
-                  alert("T33: create-new discount subform coming soon.");
-                }}
-              >
-                Create it
-              </s-button>
-              <s-button onClick={() => setManualMissing(null)}>
-                Cancel
-              </s-button>
-            </s-stack>
-          </s-stack>
-        </s-banner>
+        <CreateNewDiscount
+          code={manualMissing}
+          onCreated={onCreatedManual}
+          onCancel={() => setManualMissing(null)}
+        />
       ) : null}
 
       <s-divider />
