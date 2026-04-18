@@ -549,7 +549,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T41. Order block — fetch + render
+### ☑ T41. Order block — fetch + render
 **Specs:** `docs/admin-ui-spec.md §8`
 **Depends:** T40
 **Files:**
