@@ -3,7 +3,20 @@
     "shopify-dev-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@shopify/dev-mcp@latest"]
+      "args": [
+        "-y",
+        "@shopify/dev-mcp@latest"
+      ]
+    },
+    "code-review-graph": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "code-review-graph[embeddings]",
+        "code-review-graph",
+        "serve"
+      ],
+      "type": "stdio"
     }
   }
 }
