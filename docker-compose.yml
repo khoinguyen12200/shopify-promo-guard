@@ -1,0 +1,29 @@
+# See: docs/build-orchestration-spec.md §3 (make setup / db-up)
+# Related: CLAUDE.md § Infrastructure (local dev DB, port 5434)
+#
+# Local Postgres 16 for Promo Guard dev. Port 5434 chosen to avoid
+# clashing with any system Postgres (5432) or other Shopify projects
+# (repair-ops uses 5433).
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: promo-guard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: promo
+      POSTGRES_PASSWORD: promo
+      POSTGRES_DB: promo_guard
+    ports:
+      - "5434:5432"
+    volumes:
+      - promo_guard_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promo -d promo_guard"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  promo_guard_pgdata:
+    name: promo_guard_pgdata

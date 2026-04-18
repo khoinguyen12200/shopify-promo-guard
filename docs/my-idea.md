@@ -1,0 +1,1 @@
+A Shopify app that enforces discount/sample/welcome-offer eligibility by checking customer identity signals beyond just email — phone, shipping address, billing address, device, and IP — so abusers can't circumvent "one-time" offers by creating new accounts.
