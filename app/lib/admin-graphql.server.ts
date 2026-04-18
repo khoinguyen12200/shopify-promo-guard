@@ -254,6 +254,26 @@ const TAGS_ADD = /* GraphQL */ `
   }
 `;
 
+const TAGS_REMOVE = /* GraphQL */ `
+  mutation TagsRemove($id: ID!, $tags: [String!]!) {
+    tagsRemove(id: $id, tags: $tags) {
+      node {
+        id
+        ... on Customer {
+          tags
+        }
+        ... on Order {
+          tags
+        }
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
 const METAFIELDS_SET = /* GraphQL */ `
   mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -281,6 +301,13 @@ type OrderRiskAssessmentCreateData = {
 
 type TagsAddData = {
   tagsAdd: {
+    node: { id: string; tags?: string[] } | null;
+    userErrors: Array<{ field?: string[] | null; message: string }>;
+  };
+};
+
+type TagsRemoveData = {
+  tagsRemove: {
     node: { id: string; tags?: string[] } | null;
     userErrors: Array<{ field?: string[] | null; message: string }>;
   };
@@ -345,6 +372,26 @@ export async function tagsAdd(
   const node = payload?.node;
   if (!node?.id) {
     throw new Error("tagsAdd: missing node.id in response");
+  }
+  return { node: { id: node.id, tags: node.tags ?? [] } };
+}
+
+export async function tagsRemove(
+  client: AdminGqlClient,
+  resourceId: string,
+  tags: string[],
+): Promise<{ node: { id: string; tags: string[] } }> {
+  const body = await runMutation<TagsRemoveData>(
+    client,
+    TAGS_REMOVE,
+    { id: resourceId, tags },
+    "tagsRemove",
+  );
+  const payload = body.data?.tagsRemove;
+  assertNoUserErrors(payload?.userErrors);
+  const node = payload?.node;
+  if (!node?.id) {
+    throw new Error("tagsRemove: missing node.id in response");
   }
   return { node: { id: node.id, tags: node.tags ?? [] } };
 }

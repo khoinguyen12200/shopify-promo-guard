@@ -1,17 +1,40 @@
+/**
+ * See: docs/webhook-spec.md §6 (app/uninstalled handler)
+ * Related: app/jobs/handle-app-uninstalled.ts (the actual work)
+ *
+ * Receive Shopify's `app/uninstalled` webhook. Auth + dedup runs through the
+ * shared middleware; on success we enqueue a background job and return 200
+ * immediately so Shopify never retries on slow cleanup work.
+ */
+
 import type { ActionFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
+
+import { enqueueJob } from "../lib/jobs.server.js";
+import {
+  authenticateAndDedupWebhook,
+  markWebhookEventComplete,
+} from "../lib/webhook-auth.server.js";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, session, topic } = await authenticate.webhook(request);
+  const result = await authenticateAndDedupWebhook(request);
+  if (result.kind === "response") return result.response;
 
-  console.log(`Received ${topic} webhook for ${shop}`);
+  const { shopDomain, shopRow, webhookEvent } = result.data;
 
-  // Webhook requests can trigger multiple times and after an app has already been uninstalled.
-  // If this webhook already ran, the session may have been deleted previously.
-  if (session) {
-    await db.session.deleteMany({ where: { shop } });
+  try {
+    await enqueueJob({
+      shopId: shopRow.id,
+      type: "app_uninstalled",
+      payload: { shopDomain },
+    });
+    await markWebhookEventComplete(webhookEvent.id, { ok: true });
+  } catch (err) {
+    await markWebhookEventComplete(webhookEvent.id, {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
   }
 
-  return new Response();
+  return new Response(null, { status: 200 });
 };

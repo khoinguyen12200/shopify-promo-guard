@@ -11,6 +11,7 @@ import {
   metafieldsSet,
   orderRiskAssessmentCreate,
   tagsAdd,
+  tagsRemove,
   type AdminGqlClient,
 } from "./admin-graphql.server.js";
 
@@ -242,6 +243,58 @@ describe("tagsAdd", () => {
 
     await expect(
       tagsAdd(client, "gid://shopify/Order/404", ["x"]),
+    ).rejects.toBeInstanceOf(ShopifyUserError);
+  });
+});
+
+// -- tagsRemove ------------------------------------------------------------
+
+describe("tagsRemove", () => {
+  it("returns node.id + tags on happy path", async () => {
+    const { client, spy } = makeClient([
+      {
+        body: {
+          data: {
+            tagsRemove: {
+              node: {
+                id: "gid://shopify/Customer/42",
+                tags: [],
+              },
+              userErrors: [],
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await tagsRemove(
+      client,
+      "gid://shopify/Customer/42",
+      ["promo-guard-flag"],
+    );
+
+    expect(result).toEqual({
+      node: { id: "gid://shopify/Customer/42", tags: [] },
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws ShopifyUserError when userErrors are returned", async () => {
+    const { client } = makeClient([
+      {
+        body: {
+          data: {
+            tagsRemove: {
+              node: null,
+              userErrors: [{ field: ["id"], message: "Invalid id" }],
+            },
+          },
+        },
+      },
+    ]);
+
+    await expect(
+      tagsRemove(client, "gid://shopify/Customer/404", ["x"]),
     ).rejects.toBeInstanceOf(ShopifyUserError);
   });
 });
