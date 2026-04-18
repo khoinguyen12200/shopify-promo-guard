@@ -2,7 +2,7 @@
  * See: docs/admin-ui-spec.md §5 (Create offer — /app/offers/new)
  * Related: app/lib/discount-query.server.ts (suggestDiscounts)
  */
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "react-router";
 import { redirect, useActionData, useLoaderData } from "react-router";
 
 import { OfferForm } from "../components/offer-form";
@@ -20,6 +20,7 @@ import {
 import { ShopifyUserError } from "../lib/admin-graphql.server";
 import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 
 // -- Loader -----------------------------------------------------------------
 
@@ -288,3 +289,8 @@ export default function NewOffer() {
     </s-page>
   );
 }
+
+// Every /app/* route must emit the Shopify iframe-allow headers or the
+// response gets stripped of them on navigation inside the embedded admin.
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);

@@ -21,7 +21,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (url.searchParams.get("shop")) {
     // Preserve every Shopify launch param (shop, host, hmac, embedded,
     // id_token, session, timestamp, locale) so /app can finish OAuth.
-    return redirect(`/app?${url.searchParams.toString()}`);
+    // `throw redirect` (rather than `return`) matches the Shopify Remix
+    // scaffold exactly and ensures the response short-circuits cleanly.
+    throw redirect(`/app?${url.searchParams.toString()}`);
   }
   return null;
 };

@@ -1,7 +1,7 @@
 /**
  * See: docs/admin-ui-spec.md §4 (Offers list)
  */
-import type { LoaderFunctionArgs } from "react-router";
+import type { LoaderFunctionArgs, HeadersFunction } from "react-router";
 import { useLoaderData } from "react-router";
 
 import {
@@ -14,6 +14,7 @@ import {
 } from "../components/offer-list-row";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -166,3 +167,8 @@ export default function OffersIndex() {
     </s-page>
   );
 }
+
+// Every /app/* route must emit the Shopify iframe-allow headers or the
+// response gets stripped of them on navigation inside the embedded admin.
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);

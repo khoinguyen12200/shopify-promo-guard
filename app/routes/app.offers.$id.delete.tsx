@@ -2,7 +2,7 @@
  * See: docs/admin-ui-spec.md §6 (Delete confirmation — with restore option)
  * Related: app/lib/offer-service.server.ts (deleteOffer)
  */
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "react-router";
 import {
   Form,
   redirect,
@@ -16,6 +16,7 @@ import { deleteOffer } from "../lib/offer-service.server";
 import { ShopifyUserError } from "../lib/admin-graphql.server";
 import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -179,3 +180,8 @@ export default function DeleteOffer() {
     </s-page>
   );
 }
+
+// Every /app/* route must emit the Shopify iframe-allow headers or the
+// response gets stripped of them on navigation inside the embedded admin.
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);

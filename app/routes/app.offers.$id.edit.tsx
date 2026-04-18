@@ -2,7 +2,7 @@
  * See: docs/admin-ui-spec.md §6 (Offer detail — Edit)
  * Related: app/lib/offer-service.server.ts (updateOfferFields)
  */
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "react-router";
 import {
   Form,
   redirect,
@@ -15,6 +15,7 @@ import prisma from "../db.server";
 import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { updateOfferFields } from "../lib/offer-service.server";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 
 type FieldErrors = {
   name?: string;
@@ -192,3 +193,8 @@ export default function EditOffer() {
     </s-page>
   );
 }
+
+// Every /app/* route must emit the Shopify iframe-allow headers or the
+// response gets stripped of them on navigation inside the embedded admin.
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);

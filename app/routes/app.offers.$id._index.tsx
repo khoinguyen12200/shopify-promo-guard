@@ -2,7 +2,7 @@
  * See: docs/admin-ui-spec.md §6 (Offer detail page + stats + pause/resume)
  * Related: docs/database-design.md (ProtectedOffer, ProtectedCode, RedemptionRecord, FlaggedOrder)
  */
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "react-router";
 import { Form, useLoaderData } from "react-router";
 
 import { StatsCard } from "../components/stats-card";
@@ -10,6 +10,7 @@ import prisma from "../db.server";
 import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { setOfferStatus } from "../lib/offer-service.server";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -293,3 +294,8 @@ export default function OfferDetail() {
     </s-page>
   );
 }
+
+// Every /app/* route must emit the Shopify iframe-allow headers or the
+// response gets stripped of them on navigation inside the embedded admin.
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);

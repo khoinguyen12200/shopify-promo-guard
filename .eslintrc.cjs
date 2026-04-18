@@ -91,6 +91,16 @@ module.exports = {
         node: true,
       },
     },
+
+    // Shopify CLI regenerates `extensions/*/shopify.d.ts` on every
+    // `shopify app dev` run with a `@ts-ignore` directive baked in —
+    // any edit we make gets clobbered. Turn off the lint rule there.
+    {
+      files: ["extensions/*/shopify.d.ts"],
+      rules: {
+        "@typescript-eslint/ban-ts-comment": "off",
+      },
+    },
   ],
   globals: {
     shopify: "readonly"

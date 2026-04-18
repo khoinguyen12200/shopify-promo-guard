@@ -1,10 +1,4 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-# See: CLAUDE.md § Infrastructure · docs/system-design.md · docs/webhook-spec.md
-#
-# application_url / redirect_urls are maintained automatically by the Shopify
-# CLI during `shopify app dev` (see [build].automatically_update_urls_on_dev).
-# In production, these are set to the deployed Cloud Run URL by
-# `shopify app deploy`.
 
 client_id = "be6ffd8b113b73476546c4cefdccc3fb"
 name = "promo-guard"
@@ -13,58 +7,55 @@ embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-07"
 
-  # GDPR mandatory webhooks (see docs/webhook-spec.md §7).
-  [webhooks.privacy_compliance]
-  customer_data_request_url = "/webhooks/customers/data_request"
-  customer_deletion_url = "/webhooks/customers/redact"
-  shop_deletion_url = "/webhooks/shop/redact"
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders/paid"
+  include_fields = [
+  "id",
+  "admin_graphql_api_id",
+  "name",
+  "created_at",
+  "updated_at",
+  "email",
+  "phone",
+  "customer",
+  "discount_codes",
+  "discount_applications",
+  "shipping_address",
+  "billing_address",
+  "browser_ip",
+  "client_details",
+  "total_price",
+  "currency"
+]
 
   [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
+  uri = "/webhooks/customers/data_request"
+  compliance_topics = [ "customers/data_request" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/redact"
+  compliance_topics = [ "customers/redact" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/shop/redact"
+  compliance_topics = [ "shop/redact" ]
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
   [[webhooks.subscriptions]]
-  topics = [ "orders/paid" ]
-  uri = "/webhooks/orders/paid"
-  include_fields = [
-    "id",
-    "admin_graphql_api_id",
-    "name",
-    "created_at",
-    "updated_at",
-    "email",
-    "phone",
-    "customer",
-    "discount_codes",
-    "discount_applications",
-    "shipping_address",
-    "billing_address",
-    "browser_ip",
-    "client_details",
-    "total_price",
-    "currency",
-  ]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-# - read_orders / write_orders: orders/paid handler, order risk assessments, tags
-# - read_customers: buyer identity on orders + cart (customer tag reads)
-# - read_discounts / write_discounts: managing protected codes + discount function
-# - read_products: code-picker + discount suggestions
-#
-# Shard metafields are written to the app-reserved `$app` namespace, which
-# requires no additional scope — the authenticated app has full control of
-# its own reserved namespace (see docs/function-queries-spec.md §9).
-scopes = "read_orders,write_orders,read_customers,read_discounts,write_discounts,read_products"
+scopes = "read_customers,read_discounts,read_orders,read_products,write_discounts,write_orders"
 
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]

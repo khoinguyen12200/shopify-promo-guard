@@ -2,7 +2,9 @@
  * See: docs/admin-ui-spec.md §2 (route map) — /app redirects based on offer existence
  * Related: docs/admin-ui-spec.md §3 (onboarding) and §4 (offers list)
  */
-import { redirect, type LoaderFunctionArgs } from "react-router";
+import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
+import { redirect } from "react-router";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
@@ -22,3 +24,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function AppIndex() {
   return null;
 }
+
+// Every /app/* route must emit the Shopify iframe-allow headers or the
+// response gets stripped of them on navigation inside the embedded admin.
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);
