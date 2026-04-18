@@ -455,7 +455,7 @@ Because `cart.discountCodes` is absent from the Validation Function input schema
 
 1. The app deploys **one Validation Function** and **one Discount Function** per shop (not per offer). Both functions read the same combined shop-wide shard, so adding a new protected offer is pure data — no function redeploy required.
 2. Activation is implicit — `cart_has_guarded_code: true` is set unconditionally inside each Function and the empty-ledger fast path inside `score_checkout` covers fresh installs. In practice, the validator is only activated on checkouts where the merchant has configured a Checkout Rule, and the discount function only runs when its bound discount code is applied — so reaching "evaluate" implies "protected flow."
-3. The shard layout collapses from 5 separate metafields (§2) to **a single combined shop-wide shard** under `namespace: "promo_guard"`, `key: "shard_v1"`. Hashes from every protected offer on the shop are pooled into this one document — the app's `RedemptionRecord` table in Postgres keeps per-offer attribution for analytics. The combined shape:
+3. The shard layout collapses from 5 separate metafields (§2) to **a single combined shop-wide shard** under `namespace: "$app"`, `key: "shard_v1"`. We use the app-reserved `$app` namespace rather than a custom one because the authenticated app has full control of `$app`-prefixed metafields without requiring an extra access scope. Hashes from every protected offer on the shop are pooled into this one document — the app's `RedemptionRecord` table in Postgres keeps per-offer attribution for analytics. The combined shape:
 
 ```json
 {

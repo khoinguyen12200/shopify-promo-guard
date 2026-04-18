@@ -5,8 +5,10 @@
 # schema for this api_version. We can't gate on the typed discount code at
 # function time; instead the Validation Function is attached to checkouts via
 # a merchant-configured Checkout Rule, and reads a single shop-wide shard
-# metafield (namespace: "promo_guard", key: "shard_v1") containing pooled
-# identity hashes for every protected offer on the shop.
+# metafield (namespace: "$app", key: "shard_v1") containing pooled identity
+# hashes for every protected offer on the shop. $app is the app-reserved
+# namespace — Functions of the owning app can read/write it without extra
+# scope.
 query Input {
   cart {
     buyerIdentity {
@@ -29,7 +31,7 @@ query Input {
   }
 
   shop {
-    shard: metafield(namespace: "promo_guard", key: "shard_v1") {
+    shard: metafield(namespace: "$app", key: "shard_v1") {
       jsonValue
     }
   }

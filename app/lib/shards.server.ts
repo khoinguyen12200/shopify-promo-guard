@@ -3,7 +3,7 @@
  *      docs/webhook-spec.md §5 (shard_append sub-job)
  *
  * Plan C shard: a single shop-wide metafield at
- *   namespace="promo_guard", key="shard_v1"
+ *   namespace="$app", key="shard_v1"   (app-reserved, no extra scope needed)
  * containing parallel-array hash lists read by the Validation Function and the
  * Discount Function. Schema:
  *
@@ -39,7 +39,9 @@ import {
 // -- Constants --------------------------------------------------------------
 
 export const SHARD_VERSION = 1 as const;
-export const SHARD_NAMESPACE = "promo_guard" as const;
+// App-reserved namespace — no extra scope needed to read/write; the
+// authenticated app has full control of metafields under $app.
+export const SHARD_NAMESPACE = "$app" as const;
 export const SHARD_KEY = "shard_v1" as const;
 export const DEFAULT_MAX_SIZE_BYTES = 10_240;
 

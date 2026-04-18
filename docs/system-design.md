@@ -135,7 +135,7 @@ Each shard is a rolling-window of the most recent entries. When a new redemption
     - If score 4-9 → orderRiskAssessmentCreate MEDIUM + tag
         │
         ▼
-  Shop metafield  (one shop-wide shard: namespace="promo_guard" key="shard_v1")
+  Shop metafield  (one shop-wide shard: namespace="$app" key="shard_v1")
 
 ──── checkout ─────────────────────────────────────────
 
@@ -144,7 +144,7 @@ Each shard is a rolling-window of the most recent entries. When a new redemption
       cart.buyerIdentity.email, phone
       cart.deliveryGroups.deliveryAddress
       cart.customer.hasAnyTag(["promo-guard-redeemed"])
-      shop.metafield("promo_guard", "shard_v1")   // combined parallel arrays
+      shop.metafield("$app", "shard_v1")   // combined parallel arrays
     Rust logic:
       if no cart.discountCodes matches this offer's group → return allow
       normalize incoming signals

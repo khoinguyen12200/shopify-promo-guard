@@ -57,11 +57,14 @@ api_version = "2026-07"
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 # - read_orders / write_orders: orders/paid handler, order risk assessments, tags
-# - read_customers: buyer identity on orders + cart
+# - read_customers: buyer identity on orders + cart (customer tag reads)
 # - read_discounts / write_discounts: managing protected codes + discount function
 # - read_products: code-picker + discount suggestions
-# - write_app_data_metafields: shard metafield writes (Plan C combined shard)
-scopes = "read_orders,write_orders,read_customers,read_discounts,write_discounts,read_products,write_app_data_metafields"
+#
+# Shard metafields are written to the app-reserved `$app` namespace, which
+# requires no additional scope — the authenticated app has full control of
+# its own reserved namespace (see docs/function-queries-spec.md §9).
+scopes = "read_orders,write_orders,read_customers,read_discounts,write_discounts,read_products"
 
 [auth]
 redirect_urls = [ "https://example.com/api/auth" ]

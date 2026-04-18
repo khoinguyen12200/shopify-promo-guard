@@ -1,8 +1,8 @@
 # See: docs/function-queries-spec.md §4, §9 (Plan C — single combined shop shard)
 #
 # Plan C: we read the same shop-wide shard as the Validation Function
-# (namespace: "promo_guard", key: "shard_v1"), extract buyer identity from
-# the cart, hash with the shard's salt, and score via `score_checkout`.
+# (namespace: "$app", key: "shard_v1"), extract buyer identity from the
+# cart, hash with the shard's salt, and score via `score_checkout`.
 #
 # Query cost fits within the 30-point Function budget — see §4 for the full
 # breakdown.
@@ -33,7 +33,7 @@ query Input {
   }
 
   shop {
-    shard: metafield(namespace: "promo_guard", key: "shard_v1") {
+    shard: metafield(namespace: "$app", key: "shard_v1") {
       jsonValue
     }
   }

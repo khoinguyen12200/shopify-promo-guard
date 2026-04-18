@@ -66,7 +66,7 @@ describe("shardKey", () => {
   it("is a shop-wide literal (no per-offer suffix)", () => {
     expect(shardKey()).toBe("shard_v1");
     expect(SHARD_KEY).toBe("shard_v1");
-    expect(SHARD_NAMESPACE).toBe("promo_guard");
+    expect(SHARD_NAMESPACE).toBe("$app");
   });
 });
 
@@ -235,7 +235,7 @@ describe("appendEntry", () => {
     const call = metafieldsSetMock.mock.calls[0];
     const mfs = call[1] as Array<{ key: string; namespace: string; value: string }>;
     expect(mfs[0].key).toBe("shard_v1");
-    expect(mfs[0].namespace).toBe("promo_guard");
+    expect(mfs[0].namespace).toBe("$app");
     const written = JSON.parse(mfs[0].value);
     expect(written.v).toBe(1);
     expect(written.salt_hex).toBe("deadbeef");
@@ -301,7 +301,7 @@ describe("rebuildShard", () => {
     expect(metafieldsSetMock).toHaveBeenCalledTimes(1);
     const call = metafieldsSetMock.mock.calls[0];
     const mfs = call[1] as Array<{ key: string; namespace: string }>;
-    expect(mfs[0].namespace).toBe("promo_guard");
+    expect(mfs[0].namespace).toBe("$app");
     expect(mfs[0].key).toBe("shard_v1");
   });
 });
