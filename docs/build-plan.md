@@ -671,7 +671,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T49. Impersonation (read-only)
+### ☑ T49. Impersonation (read-only)
 **Specs:** `docs/platform-admin-spec.md §8`
 **Depends:** T47
 **Files:**

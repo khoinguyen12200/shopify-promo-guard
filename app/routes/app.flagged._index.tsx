@@ -10,6 +10,7 @@ import {
   type FlaggedOrderRowOrder,
 } from "../components/flagged-order-row";
 import prisma from "../db.server";
+import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { authenticate } from "../shopify.server";
 
 const FILTER_TO_ACTION: Record<string, string | null> = {
@@ -103,6 +104,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  requireReadOnly(request);
   const { session } = await authenticate.admin(request);
   const shop = await prisma.shop.findUnique({
     where: { shopDomain: session.shop },

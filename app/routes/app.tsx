@@ -3,6 +3,7 @@ import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
+import { readImpersonationSession } from "../lib/admin-impersonation.server";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -14,15 +15,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     scope: session.scope ?? "",
   });
 
+  const impersonation = readImpersonationSession(request);
+
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return {
+    apiKey: process.env.SHOPIFY_API_KEY || "",
+    impersonation: impersonation
+      ? {
+          shopDomain: impersonation.shopDomain,
+          expiresAt: impersonation.expiresAt,
+        }
+      : null,
+  };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, impersonation } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
+      {impersonation ? (
+        <s-banner tone="critical">
+          Impersonating <strong>{impersonation.shopDomain}</strong>. Read-only.
+          Logged. Session expires{" "}
+          {new Date(impersonation.expiresAt).toLocaleTimeString()}.
+        </s-banner>
+      ) : null}
       <Outlet />
     </AppProvider>
   );

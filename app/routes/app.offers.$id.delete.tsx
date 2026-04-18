@@ -14,6 +14,7 @@ import { useState } from "react";
 import prisma from "../db.server";
 import { deleteOffer } from "../lib/offer-service.server";
 import { ShopifyUserError } from "../lib/admin-graphql.server";
+import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -51,6 +52,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
+  requireReadOnly(request);
   const { admin, session } = await authenticate.admin(request);
   const id = params.id;
   if (!id) throw new Response("Not found", { status: 404 });

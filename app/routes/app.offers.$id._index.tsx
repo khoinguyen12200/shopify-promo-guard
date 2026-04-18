@@ -7,6 +7,7 @@ import { Form, useLoaderData } from "react-router";
 
 import { StatsCard } from "../components/stats-card";
 import prisma from "../db.server";
+import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { setOfferStatus } from "../lib/offer-service.server";
 import { authenticate } from "../shopify.server";
 
@@ -123,6 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
+  requireReadOnly(request);
   const { session } = await authenticate.admin(request);
   const id = params.id;
   if (!id) throw new Response("Not found", { status: 404 });

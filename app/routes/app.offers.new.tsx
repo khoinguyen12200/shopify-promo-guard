@@ -18,6 +18,7 @@ import {
   type NewDiscountAmount,
 } from "../lib/offer-service.server";
 import { ShopifyUserError } from "../lib/admin-graphql.server";
+import { requireReadOnly } from "../lib/admin-impersonation.server";
 import { authenticate } from "../shopify.server";
 
 // -- Loader -----------------------------------------------------------------
@@ -92,6 +93,7 @@ function parseSelected(raw: FormDataEntryValue | null): SelectedCode[] {
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  requireReadOnly(request);
   const { admin, session } = await authenticate.admin(request);
   const shop = await prisma.shop.findUnique({
     where: { shopDomain: session.shop },
