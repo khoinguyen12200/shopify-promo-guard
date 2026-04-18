@@ -239,7 +239,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T18. `orders/paid` webhook + handler
+### ☑ T18. `orders/paid` webhook + handler
 **Specs:** `docs/webhook-spec.md §5`
 **Depends:** T12, T14, T15, T16, T17
 **Files:**
@@ -313,7 +313,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 3 — Shopify Functions (Rust)
 
-### ☐ T23. Scaffold Validation Function extension
+### ☑ T23. Scaffold Validation Function extension
 **Specs:** `docs/function-queries-spec.md §7, §8`
 **Depends:** T13
 **Files:**
@@ -353,7 +353,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T26. Scaffold Discount Function extension
+### ☑ T26. Scaffold Discount Function extension
 **Specs:** `docs/function-queries-spec.md §4, §7, §8`
 **Depends:** T13
 **Files:**
@@ -394,7 +394,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T29. Onboarding page
+### ☑ T29. Onboarding page
 **Specs:** `docs/admin-ui-spec.md §3`
 **Depends:** T28
 **Files:**
@@ -406,7 +406,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T30. Offers list page
+### ☑ T30. Offers list page
 **Specs:** `docs/admin-ui-spec.md §4`
 **Depends:** T28
 **Files:**
@@ -420,7 +420,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T31. Discount auto-suggest query
+### ☑ T31. Discount auto-suggest query
 **Specs:** `docs/admin-ui-spec.md §5`
 **Depends:** T28
 **Files:**
