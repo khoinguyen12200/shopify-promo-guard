@@ -25,7 +25,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T02. Prisma schema from `database-design.md`
+### ☑ T02. Prisma schema from `database-design.md`
 **Specs:** `docs/database-design.md §entire`
 **Depends:** T01
 **Files:**

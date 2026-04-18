@@ -6,13 +6,14 @@ Status markers: `☑` done · `⚠` blocked · `⊖` deferred · `☐` pending
 
 ## Current
 
-**Last completed:** T01
-**Next task:** T02 (Prisma schema from database-design.md)
+**Last completed:** T02
+**Next task:** T03 (.env + env loading)
 **Run mode:** unattended
 
 ## Completed
 
 - ☑ T01 — docker-compose.yml for local Postgres (baseline scaffold bundled)
+- ☑ T02 — Prisma schema + init_promo_guard migration (fixed Makefile test-fixture-parity guard)
 
 ## Blocked
 
