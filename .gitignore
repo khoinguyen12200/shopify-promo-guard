@@ -35,3 +35,4 @@ docker-data/
 .react-router/
 # Added by code-review-graph
 .code-review-graph/
+yarn-error.log
