@@ -738,7 +738,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T54. E2E deploy smoke test
+### ☑ T54. E2E deploy smoke test
 **Specs:** `docs/landing-page-spec.md §15` + `docs/platform-admin-spec.md §21`
 **Depends:** T53
 **Files:**
