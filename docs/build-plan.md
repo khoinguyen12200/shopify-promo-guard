@@ -538,7 +538,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 5 — Admin UI extension (native order page)
 
-### ☐ T40. Scaffold admin UI extension
+### ☑ T40. Scaffold admin UI extension
 **Specs:** `docs/admin-ui-spec.md §8`
 **Depends:** T18
 **Files:**

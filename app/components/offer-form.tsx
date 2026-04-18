@@ -5,9 +5,12 @@
 import { Form, useSubmit } from "react-router";
 import { useRef, useState } from "react";
 
-import { CodePicker, type CodePickerSuggestion } from "./code-picker";
+import {
+  CodePicker,
+  type CodePickerSuggestion,
+  type SelectedCode,
+} from "./code-picker";
 import { ReplaceInPlaceModal } from "./replace-in-place-modal";
-import type { SelectedCode } from "./code-picker";
 
 export type OfferFormProps = {
   suggested: CodePickerSuggestion[];
