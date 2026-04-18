@@ -41,6 +41,7 @@ pub struct CheckoutSignals {
 /// All sets are plain `Vec<u32>` because the Function receives them already
 /// deserialized from JSON. Hashes inside these vecs must have been produced
 /// with the same normalization version and shop salt as the incoming signals.
+#[derive(Debug, Default)]
 pub struct RedemptionHashSet {
     pub email_hashes: Vec<u32>,
     pub phone_hashes: Vec<u32>,

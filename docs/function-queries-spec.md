@@ -439,17 +439,54 @@ scopes = "read_customers"
 
 ---
 
-## 9. Open questions to confirm during scaffolding
+## 9. Open questions confirmed during scaffolding (T24)
 
-| # | Question | How to confirm |
+| # | Question | Resolution |
 |---|---|---|
-| 1 | Does `cart.discountCodes { code, applicable }` exist in the Cart and Checkout Validation Function schema? | `shopify app function schema --stdout \| grep -i discountcode` on the scaffolded validator |
-| 2 | Are `email`, `phone`, `address1`, `zip` nullable in the input schema (affects Rust `Option<...>` unwrapping)? | Same — inspect schema |
-| 3 | Does `shop.metafield(namespace, key)` definitely resolve to null (not error) when the metafield doesn't exist yet (first-install fresh offer)? | Run `shopify app function run` with a minimal input omitting that metafield |
-| 4 | Does the Discount Function still have access to `discount.metafield` when the discount is code-based and app-owned? | Same — test with a scaffolded code-based Discount Function |
-| 5 | Are there any per-target cost differences in the 30-budget (e.g., some targets allow 60)? | Docs imply flat 30; confirm via `shopify app function build` validation errors if any |
+| 1 | Does `cart.discountCodes { code, applicable }` exist in the Cart and Checkout Validation Function schema? | **No.** Confirmed absent from the `cart_checkout_validation` schema at `api_version = 2025-10`. Adopted **Plan C** (see below). |
+| 2 | Are `email`, `phone`, `address1`, `zip` nullable in the input schema? | **Yes — all nullable.** Typegen emits `Option<&String>` for every buyer + address leaf. `hasAnyTag` is non-null `&bool`. `cart()` and `shop()` return `&T` (not Option). `deliveryAddress` is `Option<&DeliveryAddress>`. |
+| 3 | Does `shop.metafield(...)` resolve to null when the metafield doesn't exist yet? | **Yes — resolves to null**, not an error. The validator treats any absent / malformed shard as `Shard::default()` and fail-opens. |
+| 4 | Does the Discount Function have access to `discount.metafield` on code-based discounts? | Still to confirm in T27. |
+| 5 | Are there per-target cost differences in the 30-budget? | Docs imply flat 30; confirmed at build time — typegen + build succeed with cost ≤ 30. |
 
-All five are cheap to verify once the scaffold is up; none block writing the spec. This document is accurate against docs as of today and flags any gaps.
+### Plan C (adopted for v1)
+
+Because `cart.discountCodes` is absent from the Validation Function input schema, we cannot gate scoring on "cart contains our offer's code" at Function time. Instead:
+
+1. The app backend deploys **one Validation Function extension per protected offer**, with the offer id baked into the query at deploy time (string substitution into `src/cart_validations_generate_run.graphql`).
+2. The extension is only attached to checkouts that Shopify routes through that specific offer's flow, so activation is implicit — `cart_has_guarded_code: true` is set unconditionally inside the Function and the empty-ledger fast path inside `score_checkout` covers fresh offers.
+3. The shard layout collapses from 5 separate metafields (§2) to **a single combined shard** under `namespace: "promo_guard"` with a per-offer key (the literal `shard_v1` in the scaffolded query is a placeholder substituted at deploy time — e.g. `shard_<offer_id>`). The combined shape:
+
+```json
+{
+  "v": 1,
+  "salt_hex": "deadbeef...",
+  "default_country_cc": "+84",
+  "phone_hashes":         ["a1b2c3d4", ...],
+  "email_hashes":         ["..."],
+  "address_full_hashes":  ["..."],
+  "address_house_hashes": ["..."],
+  "ip_hashes":            ["..."],
+  "device_hashes":        ["..."],
+  "email_sketches":       ["1a2b3c4d000000017fffffffffffffff", ...],
+  "address_sketches":     ["..."]
+}
+```
+
+All fields optional; the parser drops malformed hex entries per-row so a single bad value cannot take the shop offline.
+
+### Plan C cost calculation
+
+| Item | Count | Per-item cost | Subtotal |
+|---|---|---|---|
+| Leaf scalars under `cart.buyerIdentity` (`email`, `phone`) | 2 | 1 | 2 |
+| `hasAnyTag` | 1 | 3 | 3 |
+| Leaf scalars under `deliveryAddress` | 5 | 1 | 5 |
+| `shop.metafield(...)` (single combined shard) | 1 | 3 | 3 |
+| Field on `Metafield` (`jsonValue`) | 1 | 0 | 0 |
+| **Total** | | | **13** |
+
+17 points of headroom. MinHash sketch computation at checkout is explicitly skipped in v1 (keeps the wasm under the 256 KB size budget); fuzzy matching is deferred to post-order scoring (scoring-spec §5.2).
 
 ---
 

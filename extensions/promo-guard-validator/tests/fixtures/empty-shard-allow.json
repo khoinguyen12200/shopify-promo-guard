@@ -4,11 +4,17 @@
     "target": "cart.validations.generate.run",
     "input": {
       "cart": {
-        "lines": [
-          {
-            "quantity": 1
+        "buyerIdentity": {
+          "email": "newbie@example.com",
+          "phone": null,
+          "customer": {
+            "hasAnyTag": false
           }
-        ]
+        },
+        "deliveryGroups": []
+      },
+      "shop": {
+        "shard": null
       }
     },
     "output": {

@@ -326,7 +326,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T24. Validator input query + nullability audit
+### ☑ T24. Validator input query + nullability audit
 **Specs:** `docs/function-queries-spec.md §3, §9`
 **Depends:** T23
 **Files:**
@@ -339,7 +339,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T25. Validator run.rs
+### ☑ T25. Validator run.rs
 **Specs:** `docs/function-queries-spec.md §3` · `docs/scoring-spec.md §5.1, §10`
 **Depends:** T13, T24
 **Files:**

@@ -4,11 +4,21 @@
     "target": "cart.validations.generate.run",
     "input": {
       "cart": {
-        "lines": [
-          {
-            "quantity": 3
+        "buyerIdentity": {
+          "email": null,
+          "phone": null,
+          "customer": {
+            "hasAnyTag": true
           }
-        ]
+        },
+        "deliveryGroups": []
+      },
+      "shop": {
+        "shard": {
+          "jsonValue": {
+            "v": 1
+          }
+        }
       }
     },
     "output": {
@@ -17,7 +27,7 @@
           "validationAdd": {
             "errors": [
               {
-                "message": "Not possible to order more than one of each",
+                "message": "This offer has already been used.",
                 "target": "$.cart"
               }
             ]
