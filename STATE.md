@@ -2,60 +2,28 @@
 
 Resume pointer for the autonomous build coordinator. See `docs/build-run-prompt.md` for usage.
 
-Status markers:
-- `☑` completed
-- `⚠` blocked — user action needed (see BLOCKED section below)
-- `⊖` deferred — waiting on a blocked dependency
-- `☐` pending
+Status markers: `☑` done · `⚠` blocked · `⊖` deferred · `☐` pending
 
 ## Current
 
-**Last task completed:** none
-**Next task:** T01 (docker-compose.yml for local Postgres)
-**Run mode:** awaiting first run
-**Last updated:** (initial)
+**Last completed:** T01
+**Next task:** T02 (Prisma schema from database-design.md)
+**Run mode:** unattended
 
 ## Completed
 
-(empty)
+- ☑ T01 — docker-compose.yml for local Postgres (baseline scaffold bundled)
 
 ## Blocked
 
-(empty — will be populated during unattended runs)
-
-Format for each entry:
-```
-### T<xx> — <title>
-**Failed at:** <timestamp>
-**Why:** <one-line reason>
-**What the user must do:**
-  - <concrete action>
-**Where:** <file path or command>
-```
+(none yet)
 
 ## Deferred
 
-(empty)
+(none yet)
 
-## Recent events
+## Pre-flight notes
 
-(empty — first run)
-
-## Auto-generated during pre-flight
-
-When the coordinator's pre-flight runs, it will write here what it generated
-and what still needs the user:
-
-```
-Generated:
-  - APP_KEK_HEX
-  - SESSION_SECRET
-
-Placeholders needing real values:
-  - SHOPIFY_API_KEY              (Partner Dashboard → App → Client ID)
-  - SHOPIFY_API_SECRET           (Partner Dashboard → App → Client secret)
-  - SHOPIFY_APP_URL              (your deployed URL or ngrok)
-  - PLATFORM_ADMIN_ALLOWED_EMAILS (your own email, comma-separated list)
-  - DATABASE_URL                 (Neon pooled connection string)
-  - DIRECT_DATABASE_URL          (Neon unpooled connection string)
-```
+- `.env` present with all required keys (APP_KEK_HEX, SESSION_SECRET, SHOPIFY_API_KEY/SECRET, SHOPIFY_APP_URL, PLATFORM_ADMIN_ALLOWED_EMAILS, DATABASE_URL, DIRECT_DATABASE_URL).
+- Docker running, shopify CLI 3.93.2, wasm32-wasip1 installed, node v24.15.0, cargo 1.88.
+- Unattended overrides active: placeholder secrets ok, Plan C auto for T24, unit-only for T42, scaffold-only T50–T54, T55/T56 human-only BLOCKED.

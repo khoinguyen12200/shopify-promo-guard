@@ -13,7 +13,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ## Phase 0 — Foundation
 
-### ☐ T01. docker-compose.yml for local Postgres
+### ☑ T01. docker-compose.yml for local Postgres
 **Specs:** `docs/build-orchestration-spec.md §3` · `CLAUDE.md § Infrastructure`
 **Depends:** none
 **Files:**
