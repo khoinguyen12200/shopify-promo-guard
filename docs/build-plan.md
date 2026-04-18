@@ -641,7 +641,7 @@ Ordered atomic tasks. Each task is small enough for one AI session. See `docs/bu
 
 ---
 
-### ☐ T47. Shop detail + decrypted redemption view (audited)
+### ☑ T47. Shop detail + decrypted redemption view (audited)
 **Specs:** `docs/platform-admin-spec.md §6, §7`
 **Depends:** T46
 **Files:**
