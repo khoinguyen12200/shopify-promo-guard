@@ -1,5 +1,6 @@
 /**
  * See: docs/admin-ui-spec.md §5 (Suggested + Other sections, manual code entry)
+ * Standard: docs/polaris-standards.md §9 (Stack vs Grid), §6 (Choice list / checkbox)
  * Related: app/lib/discount-query.server.ts (suggestDiscounts)
  */
 import { useCallback, useState } from "react";
@@ -24,11 +25,6 @@ export type SelectedCode = {
 };
 
 export type CodePickerProps = {
-  /**
-   * Suggested discounts, already split into two tabs by the server:
-   * "suggested" = appliesOncePerCustomer + welcome-named.
-   * "other" = everything else.
-   */
   suggested: CodePickerSuggestion[];
   other: CodePickerSuggestion[];
   error?: string;
@@ -46,11 +42,17 @@ function findSuggestionByCode(
   return list.find((s) => s.codes.some((c) => toUpper(c) === upper));
 }
 
+function describeSuggestion(s: CodePickerSuggestion): string {
+  const parts: string[] = [s.title];
+  if (s.appliesOncePerCustomer) parts.push("once per customer");
+  parts.push(s.status.toLowerCase());
+  return parts.join(" · ");
+}
+
 export function CodePicker({ suggested, other, error }: CodePickerProps) {
   const [selected, setSelected] = useState<SelectedCode[]>([]);
   const [manual, setManual] = useState("");
   const [manualMissing, setManualMissing] = useState<string | null>(null);
-  const [tab, setTab] = useState<"suggested" | "other">("suggested");
 
   function isSelectedCode(upper: string): boolean {
     return selected.some((s) => toUpper(s.code) === upper);
@@ -60,7 +62,6 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
     s: CodePickerSuggestion,
     origin: "suggested" | "other",
   ) {
-    // Add every code attached to this discount node.
     const next = [...selected];
     for (const code of s.codes) {
       if (isSelectedCode(toUpper(code))) continue;
@@ -76,9 +77,7 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
 
   function removeFromSuggestion(s: CodePickerSuggestion) {
     const upperSet = new Set(s.codes.map(toUpper));
-    setSelected((cur) =>
-      cur.filter((c) => !upperSet.has(toUpper(c.code))),
-    );
+    setSelected((cur) => cur.filter((c) => !upperSet.has(toUpper(c.code))));
   }
 
   function isSuggestionChecked(s: CodePickerSuggestion): boolean {
@@ -89,11 +88,8 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
     s: CodePickerSuggestion,
     origin: "suggested" | "other",
   ) {
-    if (isSuggestionChecked(s)) {
-      removeFromSuggestion(s);
-    } else {
-      addFromSuggestion(s, origin);
-    }
+    if (isSuggestionChecked(s)) removeFromSuggestion(s);
+    else addFromSuggestion(s, origin);
   }
 
   function onAddManual() {
@@ -104,7 +100,6 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
       setManual("");
       return;
     }
-    // Case A: code matches one of the suggestion nodes we already fetched.
     const hitSuggested = findSuggestionByCode(suggested, code);
     const hitOther = findSuggestionByCode(other, code);
     const hit = hitSuggested ?? hitOther;
@@ -113,7 +108,6 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
       setManual("");
       return;
     }
-    // Case B: doesn't exist (that we know of). Open T33 subform.
     setManualMissing(code);
   }
 
@@ -142,114 +136,101 @@ export function CodePicker({ suggested, other, error }: CodePickerProps) {
     [],
   );
 
-  const tabsButton = (which: "suggested" | "other") => (
-    <s-button
-      key={which}
-      variant={tab === which ? "primary" : "secondary"}
-      onClick={() => setTab(which)}
-    >
-      {which === "suggested"
-        ? `Suggested (${suggested.length})`
-        : `Other (${other.length})`}
-    </s-button>
-  );
-
-  const active = tab === "suggested" ? suggested : other;
-
   return (
     <s-stack gap="base">
-      <s-heading>Which codes count as this welcome offer?</s-heading>
-
       {error ? <s-banner tone="critical">{error}</s-banner> : null}
 
-      <s-stack direction="inline" gap="small">
-        {tabsButton("suggested")}
-        {tabsButton("other")}
-      </s-stack>
-
-      {active.length === 0 ? (
-        <s-text color="subdued">
-          {tab === "suggested"
-            ? "No welcome-style discounts found in your store yet."
-            : "No other active discounts found."}
-        </s-text>
-      ) : (
-        <s-stack gap="small">
-          {active.map((s) => {
-            const checked = isSuggestionChecked(s);
-            return (
-              <s-stack
+      <s-section heading="Suggested codes">
+        {suggested.length === 0 ? (
+          <s-paragraph color="subdued">
+            No welcome-style discounts found in your store yet.
+          </s-paragraph>
+        ) : (
+          <s-stack gap="small-300">
+            {suggested.map((s) => (
+              <s-checkbox
                 key={s.discountNodeId}
+                name={`suggestion-${s.discountNodeId}`}
+                label={s.codes.join(", ")}
+                details={describeSuggestion(s)}
+                checked={isSuggestionChecked(s)}
+                onChange={() => toggleSuggestion(s, "suggested")}
+              />
+            ))}
+          </s-stack>
+        )}
+      </s-section>
+
+      <s-section heading="Other active discounts">
+        {other.length === 0 ? (
+          <s-paragraph color="subdued">
+            No other active discounts found.
+          </s-paragraph>
+        ) : (
+          <s-stack gap="small-300">
+            {other.map((s) => (
+              <s-checkbox
+                key={s.discountNodeId}
+                name={`suggestion-${s.discountNodeId}`}
+                label={s.codes.join(", ")}
+                details={describeSuggestion(s)}
+                checked={isSuggestionChecked(s)}
+                onChange={() => toggleSuggestion(s, "other")}
+              />
+            ))}
+          </s-stack>
+        )}
+      </s-section>
+
+      <s-section heading="Add a code manually">
+        <s-grid gridTemplateColumns="1fr auto" gap="small-300" alignItems="end">
+          <s-text-field
+            name="manual-code"
+            label="Discount code"
+            labelAccessibilityVisibility="exclusive"
+            placeholder="Enter a discount code"
+            value={manual}
+            onChange={(e) => setManual(e.currentTarget.value)}
+          />
+          <s-button variant="secondary" onClick={onAddManual}>
+            Add
+          </s-button>
+        </s-grid>
+
+        {manualMissing ? (
+          <CreateNewDiscount
+            code={manualMissing}
+            onCreated={onCreatedManual}
+            onCancel={() => setManualMissing(null)}
+          />
+        ) : null}
+      </s-section>
+
+      <s-section heading="Selected">
+        {selected.length === 0 ? (
+          <s-paragraph color="subdued">No codes selected yet.</s-paragraph>
+        ) : (
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            {selected.map((s) => (
+              <s-stack
+                key={toUpper(s.code)}
                 direction="inline"
-                gap="base"
+                gap="small-100"
                 alignItems="center"
               >
-                <s-checkbox
-                  name={`suggestion-${s.discountNodeId}`}
-                  label={s.codes.join(", ")}
-                  checked={checked}
-                  onChange={() => toggleSuggestion(s, tab)}
+                <s-badge tone="info">{s.code}</s-badge>
+                <s-button
+                  variant="tertiary"
+                  icon="x"
+                  accessibilityLabel={`Remove ${s.code}`}
+                  onClick={() => removeSelected(toUpper(s.code))}
                 />
-                <s-text color="subdued">
-                  {s.title}
-                  {s.appliesOncePerCustomer ? " · once per customer" : ""}
-                  {" · "}
-                  {s.status.toLowerCase()}
-                </s-text>
               </s-stack>
-            );
-          })}
-        </s-stack>
-      )}
+            ))}
+          </s-stack>
+        )}
+      </s-section>
 
-      <s-divider />
-
-      <s-heading>Or add a code manually</s-heading>
-      <s-stack direction="inline" gap="base" alignItems="end">
-        <s-text-field
-          name="manual-code"
-          label="Code"
-          value={manual}
-          onChange={(e) => setManual(e.currentTarget.value)}
-        />
-        <s-button onClick={onAddManual}>Add</s-button>
-      </s-stack>
-
-      {manualMissing ? (
-        <CreateNewDiscount
-          code={manualMissing}
-          onCreated={onCreatedManual}
-          onCancel={() => setManualMissing(null)}
-        />
-      ) : null}
-
-      <s-divider />
-
-      <s-heading>Selected</s-heading>
-      {selected.length === 0 ? (
-        <s-text color="subdued">No codes selected yet.</s-text>
-      ) : (
-        <s-stack direction="inline" gap="small">
-          {selected.map((s) => (
-            <s-stack
-              key={toUpper(s.code)}
-              direction="inline"
-              gap="small"
-              alignItems="center"
-            >
-              <s-badge tone="info">{s.code}</s-badge>
-              <s-button
-                variant="tertiary"
-                onClick={() => removeSelected(toUpper(s.code))}
-              >
-                Remove
-              </s-button>
-            </s-stack>
-          ))}
-        </s-stack>
-      )}
-
-      {/* Hidden input carries the selected list across form submit. */}
       <input
         type="hidden"
         name="selectedCodes"

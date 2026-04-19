@@ -2,7 +2,7 @@
  * See: docs/admin-ui-spec.md §7 (Flagged orders — row)
  * Related: docs/database-design.md (FlaggedOrder model)
  */
-import { Form } from "react-router";
+import { useFetcher } from "react-router";
 
 export type FlaggedOrderRowOrder = {
   id: string;
@@ -38,59 +38,72 @@ function actionTone(
 }
 
 function extractNumericOrderId(orderGid: string): string {
-  // orderGid shape: gid://shopify/Order/<id>
   const parts = orderGid.split("/");
   return parts[parts.length - 1] ?? orderGid;
 }
 
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function FlaggedOrderRow({ order, shopDomain }: FlaggedOrderRowProps) {
+  const fetcher = useFetcher();
   const numericOrderId = extractNumericOrderId(order.orderGid);
-  const cancelHref = `https://admin.shopify.com/store/${shopDomain}/orders/${numericOrderId}`;
+  const orderHref = `https://admin.shopify.com/store/${shopDomain}/orders/${numericOrderId}`;
   const isPending = order.merchantAction === "pending";
+  const dismissing = fetcher.state !== "idle";
+
+  function dismiss() {
+    const form = new FormData();
+    form.set("intent", "dismiss");
+    form.set("flaggedOrderId", order.id);
+    fetcher.submit(form, { method: "post" });
+  }
 
   return (
-    <s-stack gap="small">
-      <s-stack direction="inline" gap="base" alignItems="center">
-        <s-heading>{order.orderName}</s-heading>
+    <s-table-row>
+      <s-table-cell>
+        <s-stack gap="small-100">
+          <s-link href={orderHref} target="_blank">
+            {order.orderName}
+          </s-link>
+          {order.reasons.length > 0 ? (
+            <s-paragraph color="subdued">
+              {order.reasons.join(" · ")}
+            </s-paragraph>
+          ) : null}
+        </s-stack>
+      </s-table-cell>
+      <s-table-cell>
         <s-badge tone={riskTone(order.riskLevel)}>
           {order.riskLevel.toUpperCase()}
         </s-badge>
-        {!isPending ? (
-          <s-badge tone={actionTone(order.merchantAction)}>
-            {order.merchantAction.charAt(0).toUpperCase() +
-              order.merchantAction.slice(1)}
-          </s-badge>
-        ) : null}
-      </s-stack>
-
-      {order.customerEmail ? (
-        <s-text>{order.customerEmail}</s-text>
-      ) : (
-        <s-text color="subdued">Customer redacted</s-text>
-      )}
-
-      <s-text color="subdued">Score: {order.score}</s-text>
-
-      {order.reasons.length > 0 ? (
-        <s-stack gap="small-100">
-          {order.reasons.map((reason, idx) => (
-            <s-text key={idx}>• {reason}</s-text>
-          ))}
-        </s-stack>
-      ) : null}
-
-      <s-stack direction="inline" gap="base">
+      </s-table-cell>
+      <s-table-cell>{order.score.toLocaleString()}</s-table-cell>
+      <s-table-cell>
+        <s-badge tone={actionTone(order.merchantAction)}>
+          {order.merchantAction.charAt(0).toUpperCase() +
+            order.merchantAction.slice(1)}
+        </s-badge>
+      </s-table-cell>
+      <s-table-cell>{formatDate(order.createdAt)}</s-table-cell>
+      <s-table-cell>
         {isPending ? (
-          <Form method="post">
-            <input type="hidden" name="intent" value="dismiss" />
-            <input type="hidden" name="flaggedOrderId" value={order.id} />
-            <s-button type="submit">Dismiss</s-button>
-          </Form>
+          <s-button
+            variant="tertiary"
+            disabled={dismissing}
+            onClick={dismiss}
+          >
+            {dismissing ? "Dismissing…" : "Dismiss"}
+          </s-button>
         ) : null}
-        <a href={cancelHref} target="_blank" rel="noopener noreferrer">
-          Cancel order →
-        </a>
-      </s-stack>
-    </s-stack>
+      </s-table-cell>
+    </s-table-row>
   );
 }

@@ -1,5 +1,6 @@
 /**
  * See: docs/admin-ui-spec.md §5 (Create offer form + silent-strip confirmation)
+ * Standard: docs/polaris-standards.md §14 (Details / edit-form pattern)
  * Related: docs/system-design.md § Replace-in-place (T34)
  */
 import { Form, useSubmit } from "react-router";
@@ -13,6 +14,8 @@ import {
 import { ReplaceInPlaceModal } from "./replace-in-place-modal";
 
 export type OfferFormProps = {
+  pageHeading: string;
+  submitLabel: string;
   suggested: CodePickerSuggestion[];
   other: CodePickerSuggestion[];
   fieldErrors?: {
@@ -24,6 +27,7 @@ export type OfferFormProps = {
     name?: string;
     mode?: "block" | "silent_strip";
   };
+  suggestError?: string | null;
 };
 
 function nativeCodesNeedingReplacement(selected: SelectedCode[]): string[] {
@@ -36,10 +40,13 @@ function nativeCodesNeedingReplacement(selected: SelectedCode[]): string[] {
 }
 
 export function OfferForm({
+  pageHeading,
+  submitLabel,
   suggested,
   other,
   fieldErrors,
   defaultValues,
+  suggestError,
 }: OfferFormProps) {
   const [name, setName] = useState(defaultValues?.name ?? "");
   const [mode, setMode] = useState<"block" | "silent_strip">(
@@ -80,68 +87,86 @@ export function OfferForm({
 
   return (
     <Form method="post" ref={formRef} onSubmit={onSubmit}>
-      {fieldErrors?.form ? (
-        <s-banner tone="critical">{fieldErrors.form}</s-banner>
-      ) : null}
+      <s-page heading={pageHeading}>
+        <s-link slot="breadcrumb-actions" href="/app/offers">
+          Offers
+        </s-link>
+        <s-button slot="secondary-actions" href="/app/offers">
+          Cancel
+        </s-button>
+        <s-button slot="primary-action" variant="primary" type="submit">
+          {submitLabel}
+        </s-button>
 
-      {pendingReplaceCodes ? (
-        <s-section>
+        {suggestError ? (
+          <s-banner tone="warning">
+            We couldn&apos;t load discounts from your store. You can still add
+            codes manually. ({suggestError})
+          </s-banner>
+        ) : null}
+
+        {fieldErrors?.form ? (
+          <s-banner tone="critical">{fieldErrors.form}</s-banner>
+        ) : null}
+
+        {pendingReplaceCodes ? (
           <ReplaceInPlaceModal
             codes={pendingReplaceCodes}
             onConfirm={confirmReplace}
             onCancel={() => setPendingReplaceCodes(null)}
           />
+        ) : null}
+
+        <s-section heading="Offer information">
+          <s-grid gap="base">
+            <s-text-field
+              name="name"
+              label="Name"
+              labelAccessibilityVisibility="visible"
+              value={name}
+              required
+              details="A short internal name you'll recognise in the offers list."
+              error={fieldErrors?.name}
+              onChange={(e) => setName(e.currentTarget.value)}
+            />
+          </s-grid>
         </s-section>
-      ) : null}
 
-      <s-section heading="Name">
-        <s-text-field
-          name="name"
-          label="Name"
-          value={name}
-          required
-          error={fieldErrors?.name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-      </s-section>
+        <s-section heading="Protected codes">
+          <CodePicker
+            suggested={suggested}
+            other={other}
+            error={fieldErrors?.codes}
+          />
+        </s-section>
 
-      <s-section heading="Codes">
-        <CodePicker
-          suggested={suggested}
-          other={other}
-          error={fieldErrors?.codes}
-        />
-      </s-section>
-
-      <s-section heading="What happens when someone reuses this offer?">
-        <s-choice-list
-          name="mode"
-          values={[mode]}
-          onChange={(e) => {
-            const value = (e.target as HTMLInputElement | null)?.value;
-            if (value === "silent_strip" || value === "block") setMode(value);
-          }}
-        >
-          <s-choice value="silent_strip">
-            Silently don&apos;t apply the discount (recommended)
-          </s-choice>
-          <s-choice value="block">Block their checkout</s-choice>
-        </s-choice-list>
-        <s-paragraph tone="neutral" color="subdued">
-          {mode === "silent_strip"
-            ? "The customer can still check out — they just don't get the discount. Works best for most stores."
-            : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
-        </s-paragraph>
-      </s-section>
-
-      <s-section>
-        <s-stack direction="inline" gap="base">
-          <s-button href="/app/offers">Cancel</s-button>
-          <s-button type="submit" variant="primary">
-            Create offer
-          </s-button>
-        </s-stack>
-      </s-section>
+        {/* Aside: enforcement mode is secondary — narrower column keeps the
+            main flow focused on naming and picking codes */}
+        <s-section slot="aside" heading="Enforcement mode">
+          <s-grid gap="small-300">
+            <s-choice-list
+              name="mode"
+              label="Enforcement mode"
+              labelAccessibilityVisibility="exclusive"
+              values={[mode]}
+              onChange={(e) => {
+                const value = (e.target as HTMLInputElement | null)?.value;
+                if (value === "silent_strip" || value === "block") setMode(value);
+              }}
+            >
+              <s-choice value="silent_strip">
+                Silently skip the discount (recommended)
+              </s-choice>
+              <s-choice value="block">Block their checkout</s-choice>
+            </s-choice-list>
+            <s-paragraph color="subdued">
+              {mode === "silent_strip"
+                ? "The customer can still check out — they just won't get the discount. Works best for most stores."
+                : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
+            </s-paragraph>
+          </s-grid>
+        </s-section>
+      </s-page>
     </Form>
   );
 }

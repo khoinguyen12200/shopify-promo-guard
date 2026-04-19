@@ -1,0 +1,7 @@
+# Files to copy into new git worktrees (gitignored files that must exist everywhere)
+
+# Environment template — copy to .env and fill in values
+.env.example
+
+# Docker override example (if added later)
+# docker-compose.override.yml.example

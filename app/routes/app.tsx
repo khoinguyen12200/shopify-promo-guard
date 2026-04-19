@@ -3,9 +3,9 @@ import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
-import { readImpersonationSession } from "../lib/admin-impersonation.server";
-import { env } from "../lib/env.server";
-import { authenticate } from "../shopify.server";
+import { readImpersonationSession } from "~/lib/admin-impersonation.server";
+import { env } from "~/lib/env.server";
+import { authenticate } from "~/shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);

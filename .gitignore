@@ -36,3 +36,7 @@ docker-data/
 # Added by code-review-graph
 .code-review-graph/
 yarn-error.log
+
+# Claude Code local files
+CLAUDE.local.md
+.claude/settings.local.json

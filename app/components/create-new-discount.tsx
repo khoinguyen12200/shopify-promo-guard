@@ -1,5 +1,7 @@
 /**
  * See: docs/admin-ui-spec.md §5 (Case B — inline create-new-discount subform)
+ * Standard: docs/polaris-standards.md §3 (nested sections), §5 (form fields),
+ *           §9 (Stack vs Grid)
  * Related: app/lib/offer-service.server.ts (discountCodeAppCreate wrapper)
  */
 import { useEffect, useState } from "react";
@@ -68,80 +70,87 @@ export function CreateNewDiscount({
   }
 
   return (
-    <s-banner
-      tone="info"
-      heading={`Create "${code}" through Promo Guard?`}
-    >
+    <s-section heading={`Create "${code}" through Promo Guard?`}>
       <s-stack gap="base">
         {actionError ? (
           <s-banner tone="critical">{actionError}</s-banner>
         ) : null}
 
-        <s-stack gap="small">
-          <s-heading>Amount</s-heading>
-          <s-choice-list
-            name="amount-kind"
-            values={[amountKind]}
-            onChange={(e) => {
-              const value = (e.target as HTMLInputElement | null)?.value;
-              if (value === "percentage" || value === "fixed")
-                setAmountKind(value);
-            }}
-          >
-            <s-choice value="percentage">Percentage</s-choice>
-            <s-choice value="fixed">Fixed amount</s-choice>
-          </s-choice-list>
-          {amountKind === "percentage" ? (
-            <s-number-field
-              name="percent-input"
-              label="Percentage off"
-              value={percent}
-              min={1}
-              max={99}
-              onChange={(e: { currentTarget: { value: string } }) =>
-                setPercent(e.currentTarget.value)
-              }
-            />
-          ) : (
-            <s-money-field
-              name="fixed-input"
-              label="Fixed amount"
-              value={fixed}
-              min={0}
-              onChange={(e: { currentTarget: { value: string } }) =>
-                setFixed(e.currentTarget.value)
-              }
-            />
-          )}
-        </s-stack>
+        <s-section heading="Discount amount">
+          <s-grid gap="base">
+            <s-choice-list
+              name="amount-kind"
+              label="Discount type"
+              labelAccessibilityVisibility="exclusive"
+              values={[amountKind]}
+              onChange={(e) => {
+                const value = (e.target as HTMLInputElement | null)?.value;
+                if (value === "percentage" || value === "fixed")
+                  setAmountKind(value);
+              }}
+            >
+              <s-choice value="percentage">Percentage</s-choice>
+              <s-choice value="fixed">Fixed amount</s-choice>
+            </s-choice-list>
+            {amountKind === "percentage" ? (
+              <s-number-field
+                name="percent-input"
+                label="Percentage off"
+                labelAccessibilityVisibility="visible"
+                value={percent}
+                min={1}
+                max={99}
+                details="Whole number between 1 and 99."
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setPercent(e.currentTarget.value)
+                }
+              />
+            ) : (
+              <s-money-field
+                name="fixed-input"
+                label="Fixed amount"
+                labelAccessibilityVisibility="visible"
+                value={fixed}
+                min={0}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setFixed(e.currentTarget.value)
+                }
+              />
+            )}
+          </s-grid>
+        </s-section>
 
-        <s-stack gap="small">
-          <s-heading>Usage</s-heading>
-          <s-checkbox
-            name="once-per-customer"
-            label="Once per customer"
-            checked={oncePerCustomer}
-            onChange={(e) => setOncePerCustomer(e.currentTarget.checked)}
-          />
-          <s-checkbox
-            name="has-expiry"
-            label="Set an expiry date"
-            checked={hasEndsAt}
-            onChange={(e) => setHasEndsAt(e.currentTarget.checked)}
-          />
-          {hasEndsAt ? (
-            <s-date-field
-              name="ends-at"
-              label="Expires on"
-              value={endsAt}
-              onChange={(e: { currentTarget: { value: string } }) =>
-                setEndsAt(e.currentTarget.value)
-              }
+        <s-section heading="Redemption limits">
+          <s-grid gap="base">
+            <s-checkbox
+              name="once-per-customer"
+              label="Limit to one use per customer"
+              details="Recommended for welcome offers so each shopper gets exactly one."
+              checked={oncePerCustomer}
+              onChange={(e) => setOncePerCustomer(e.currentTarget.checked)}
             />
-          ) : null}
-        </s-stack>
+            <s-checkbox
+              name="has-expiry"
+              label="Set an expiry date"
+              details="The discount stops applying after this date."
+              checked={hasEndsAt}
+              onChange={(e) => setHasEndsAt(e.currentTarget.checked)}
+            />
+            {hasEndsAt ? (
+              <s-date-field
+                name="ends-at"
+                label="Expires on"
+                labelAccessibilityVisibility="visible"
+                value={endsAt}
+                onChange={(e: { currentTarget: { value: string } }) =>
+                  setEndsAt(e.currentTarget.value)
+                }
+              />
+            ) : null}
+          </s-grid>
+        </s-section>
 
-        <s-stack direction="inline" gap="small">
+        <s-stack direction="inline" gap="small-300">
           <s-button onClick={onCancel} disabled={submitting}>
             Cancel
           </s-button>
@@ -154,6 +163,6 @@ export function CreateNewDiscount({
           </s-button>
         </s-stack>
       </s-stack>
-    </s-banner>
+    </s-section>
   );
 }

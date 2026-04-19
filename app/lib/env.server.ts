@@ -54,6 +54,9 @@ const envSchema = z.object({
   // Optional debug flag for Admin GraphQL cost logging.
   DEBUG_GQL: z.enum(["0", "1"]).default("0"),
 
+  // Shared secret for authenticating cron-triggered requests.
+  CRON_SECRET: z.string().min(1).default(""),
+
   // Standard Node environment.
   NODE_ENV: z
     .enum(["development", "test", "production"])

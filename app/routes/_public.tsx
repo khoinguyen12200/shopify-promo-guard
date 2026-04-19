@@ -4,7 +4,7 @@
 
 import { Outlet } from "react-router";
 
-import { Footer } from "../components/public/footer";
+import { Footer } from "~/components/public/footer";
 
 import "../styles/public.css";
 
