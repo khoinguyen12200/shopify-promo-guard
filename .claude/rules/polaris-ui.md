@@ -9,6 +9,16 @@ paths:
 
 Full reference: @docs/polaris-standards.md
 
+## MANDATORY: Use Shopify MCP before any UI work
+
+Before adding, editing, or fixing any component in the admin app:
+
+1. Call `mcp__shopify-dev-mcp__learn_shopify_api` with `api: "polaris-app-home"`
+2. Call `mcp__shopify-dev-mcp__search_docs_chunks` to look up the specific component or pattern
+3. Follow exactly what the docs say — do NOT guess props, events, or slot names
+
+This is not optional. Guessing Polaris component APIs causes bugs that are hard to diagnose (wrong event names, wrong slot names, wrong show/hide methods, etc.).
+
 ## Quick checklist before touching any UI file
 
 - Use `<s-*>` web components only — never `@shopify/polaris` React lib, never raw `<input>`/`<select>`/`<textarea>`
