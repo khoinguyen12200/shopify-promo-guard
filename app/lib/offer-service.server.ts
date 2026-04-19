@@ -230,6 +230,7 @@ export async function createNewProtectedDiscount(
     functionId,
     title: `Promo Guard — ${code}`,
     code,
+    discountClasses: ["ORDER", "PRODUCT"],
     appliesOncePerCustomer: input.appliesOncePerCustomer,
     startsAt,
     endsAt,
@@ -292,6 +293,31 @@ const CODE_DISCOUNT_NODE_BY_CODE = /* GraphQL */ `
   }
 `;
 
+const DISCOUNT_CODE_RENAME_AND_DEACTIVATE = /* GraphQL */ `
+  mutation DiscountCodeRenameAndDeactivate($id: ID!, $basicCodeDiscount: DiscountCodeBasicInput!) {
+    discountCodeBasicUpdate(id: $id, basicCodeDiscount: $basicCodeDiscount) {
+      codeDiscountNode {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+    discountCodeDeactivate(id: $id) {
+      codeDiscountNode {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
 const DISCOUNT_CODE_DEACTIVATE = /* GraphQL */ `
   mutation DiscountCodeDeactivate($id: ID!) {
     discountCodeDeactivate(id: $id) {
@@ -324,6 +350,17 @@ interface CodeDiscountNodeByCodeData {
       } | null;
     } | null;
   } | null;
+}
+
+interface DiscountCodeRenameAndDeactivateData {
+  discountCodeBasicUpdate: {
+    codeDiscountNode: { id: string } | null;
+    userErrors: Array<{ field?: string[] | null; message: string; code?: string | null }>;
+  };
+  discountCodeDeactivate: {
+    codeDiscountNode: { id: string } | null;
+    userErrors: Array<{ field?: string[] | null; message: string; code?: string | null }>;
+  };
 }
 
 interface DiscountCodeDeactivateData {
@@ -392,6 +429,25 @@ export async function readNativeDiscountByCode(
  * `discountCodeAppCreate` with the same code — Shopify enforces code-string
  * uniqueness across active discounts.
  */
+async function renameAndDeactivateNativeDiscount(
+  client: AdminGqlClient,
+  discountNodeId: string,
+  archiveCode: string,
+): Promise<void> {
+  const body = await runGql<DiscountCodeRenameAndDeactivateData>(
+    client,
+    DISCOUNT_CODE_RENAME_AND_DEACTIVATE,
+    { id: discountNodeId, basicCodeDiscount: { code: archiveCode } },
+    "discountCodeRenameAndDeactivate",
+  );
+  const renameErrors = body.data?.discountCodeBasicUpdate?.userErrors ?? [];
+  const deactivateErrors = body.data?.discountCodeDeactivate?.userErrors ?? [];
+  const allErrors = [...renameErrors, ...deactivateErrors];
+  if (allErrors.length > 0) {
+    throw new ShopifyUserError(allErrors);
+  }
+}
+
 export async function discountCodeDeactivate(
   client: AdminGqlClient,
   discountNodeId: string,
@@ -432,8 +488,10 @@ export async function replaceInPlace(
     );
   }
 
-  // Deactivate FIRST — otherwise discountCodeAppCreate hits uniqueness error.
-  await discountCodeDeactivate(client, resolved.discountNodeId);
+  // Rename + deactivate in one round-trip. Rename frees the original code string
+  // (Shopify enforces uniqueness even on deactivated codes).
+  const archiveCode = `_PG_${args.code.toUpperCase()}_${Date.now().toString(36).toUpperCase()}`;
+  await renameAndDeactivateNativeDiscount(client, resolved.discountNodeId, archiveCode);
 
   const created = await createNewProtectedDiscount(client, {
     code: args.code,

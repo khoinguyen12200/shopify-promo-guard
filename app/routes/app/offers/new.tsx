@@ -6,7 +6,6 @@ import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "re
 import { redirect, useActionData, useLoaderData } from "react-router";
 
 import { OfferForm } from "~/components/offer-form";
-import type { SelectedCode } from "~/components/code-picker";
 import prisma from "~/db.server";
 import {
   suggestDiscounts,
@@ -45,10 +44,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       err instanceof Error ? err.message : "Unable to load discounts.";
   }
 
-  const suggested = suggestions.filter((s) => s.appliesOncePerCustomer);
-  const other = suggestions.filter((s) => !s.appliesOncePerCustomer);
+  const offerCount = await prisma.protectedOffer.count({
+    where: { shopId: shop.id, archivedAt: null },
+  });
 
-  return { suggested, other, suggestError };
+  return { suggestions, suggestError, isFirstOffer: offerCount === 0 };
 };
 
 // -- Action -----------------------------------------------------------------
@@ -58,40 +58,6 @@ type FieldErrors = {
   codes?: string;
   form?: string;
 };
-
-function parseSelected(raw: FormDataEntryValue | null): SelectedCode[] {
-  if (typeof raw !== "string" || raw.length === 0) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    const out: SelectedCode[] = [];
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") continue;
-      const obj = item as Record<string, unknown>;
-      const code = typeof obj.code === "string" ? obj.code.trim() : "";
-      if (!code) continue;
-      const origin =
-        obj.origin === "suggested" ||
-        obj.origin === "other" ||
-        obj.origin === "existing" ||
-        obj.origin === "manual-missing"
-          ? obj.origin
-          : "existing";
-      out.push({
-        code,
-        discountNodeId:
-          typeof obj.discountNodeId === "string"
-            ? obj.discountNodeId
-            : undefined,
-        isAppOwned: obj.isAppOwned === true,
-        origin,
-      });
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   requireReadOnly(request);
@@ -104,39 +70,90 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const form = await request.formData();
-  const intent = String(form.get("intent") ?? "submit-offer");
+  const name = String(form.get("name") ?? "").trim();
+  const mode = String(form.get("mode") ?? "silent_strip");
+  const code = String(form.get("protectedCode") ?? "").trim();
+  const discountNodeId = String(form.get("protectedCodeDiscountId") ?? "") || undefined;
+  const isAppOwned = form.get("protectedCodeIsAppOwned") === "true";
+  const origin = String(form.get("protectedCodeOrigin") ?? "existing");
 
-  if (intent === "create-discount") {
-    const code = String(form.get("code") ?? "").trim();
-    const amountKind = String(form.get("amountKind") ?? "percentage");
-    const appliesOncePerCustomer =
-      String(form.get("appliesOncePerCustomer") ?? "1") === "1";
-    const endsAt = String(form.get("endsAt") ?? "") || null;
+  const fieldErrors: FieldErrors = {};
+  if (!name) fieldErrors.name = "Name is required.";
+  if (!code) fieldErrors.codes = "Pick a code.";
+  if (mode !== "block" && mode !== "silent_strip") {
+    fieldErrors.form = "Invalid mode.";
+  }
 
-    let amount: NewDiscountAmount;
-    if (amountKind === "fixed") {
-      const parsed = Number(form.get("fixed") ?? "");
-      amount = { kind: "fixed", amount: parsed };
-    } else {
-      const parsed = Number(form.get("percent") ?? "");
-      amount = { kind: "percentage", percent: parsed };
+  if (code) {
+    const conflicting = await prisma.protectedCode.findFirst({
+      where: {
+        codeUpper: code.toUpperCase(),
+        archivedAt: null,
+        protectedOffer: { shopId: shop.id, archivedAt: null },
+      },
+      select: { protectedOffer: { select: { name: true } } },
+    });
+    if (conflicting) {
+      fieldErrors.codes = `This code is already in another protected offer. Remove it from '${conflicting.protectedOffer.name}' first.`;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { fieldErrors, values: { name, mode } };
+  }
+
+  type PreparedCode = {
+    code: string;
+    codeUpper: string;
+    discountNodeId: string | null;
+    isAppOwned: boolean;
+    replacedDiscountNodeId: string | null;
+  };
+
+  let prepared: PreparedCode;
+
+  if (origin === "new") {
+    const rawNewDiscount = String(form.get("newDiscountData") ?? "");
+    let newDiscountPercent = 0;
+    let newDiscountFixed = 0;
+    let newDiscountValueType = "percentage";
+    let newDiscountEndsAt: string | null = null;
+    try {
+      const parsed = JSON.parse(rawNewDiscount) as Record<string, unknown>;
+      newDiscountValueType = String(parsed.valueType ?? "percentage");
+      if (newDiscountValueType === "percentage") {
+        newDiscountPercent = Number(parsed.value ?? 0);
+      } else {
+        newDiscountFixed = Number(parsed.value ?? 0);
+      }
+      const hasEndDate = parsed.hasEndDate === true;
+      const endDate = String(parsed.endDate ?? "");
+      const endTime = String(parsed.endTime ?? "23:59");
+      if (hasEndDate && endDate) {
+        newDiscountEndsAt = `${endDate}T${endTime}:00Z`;
+      }
+    } catch {
+      // use defaults
     }
 
-    if (!code) {
-      return { ok: false as const, error: "Code is required." };
-    }
+    const amount: NewDiscountAmount =
+      newDiscountValueType === "fixed"
+        ? { kind: "fixed", amount: newDiscountFixed }
+        : { kind: "percentage", percent: newDiscountPercent };
 
     try {
       const result = await createNewProtectedDiscount(admin.graphql, {
         code,
         amount,
-        appliesOncePerCustomer,
-        endsAt,
+        appliesOncePerCustomer: true,
+        endsAt: newDiscountEndsAt,
       });
-      return {
-        ok: true as const,
+      prepared = {
         code: result.code,
+        codeUpper: result.code.toUpperCase(),
         discountNodeId: result.discountNodeId,
+        isAppOwned: true,
+        replacedDiscountNodeId: null,
       };
     } catch (err) {
       const message =
@@ -145,75 +162,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           : err instanceof Error
             ? err.message
             : "Could not create discount.";
-      return { ok: false as const, error: message };
+      return { fieldErrors: { codes: message }, values: { name, mode } };
     }
-  }
-
-  const name = String(form.get("name") ?? "").trim();
-  const mode = String(form.get("mode") ?? "silent_strip");
-  const selected = parseSelected(form.get("selectedCodes"));
-
-  const fieldErrors: FieldErrors = {};
-  if (!name) fieldErrors.name = "Name is required.";
-  if (selected.length === 0) {
-    fieldErrors.codes = "Pick at least one code.";
-  }
-  if (mode !== "block" && mode !== "silent_strip") {
-    fieldErrors.form = "Invalid mode.";
-  }
-
-  // Enforce uniqueness of codeUpper across existing protected offers.
-  if (selected.length > 0) {
-    const uppers = Array.from(
-      new Set(selected.map((s) => s.code.toUpperCase())),
-    );
-    const conflicting = await prisma.protectedCode.findMany({
-      where: {
-        codeUpper: { in: uppers },
-        archivedAt: null,
-        protectedOffer: { shopId: shop.id, archivedAt: null },
-      },
-      select: {
-        codeUpper: true,
-        protectedOffer: { select: { name: true } },
-      },
-    });
-    if (conflicting.length > 0) {
-      const first = conflicting[0];
-      fieldErrors.codes = `This code is already in another protected offer. Remove it from '${first.protectedOffer.name}' first.`;
-    }
-  }
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return { fieldErrors, values: { name, mode } };
-  }
-
-  // Replace-in-place (T34): in silent-strip mode, any selected code that
-  // resolves to a native (non-app-owned) discount must be swapped for an
-  // app-owned copy before we save — otherwise our Discount Function never
-  // runs for that code.
-  const prepared = await Promise.all(
-    selected.map(async (s) => {
-      const needsReplace =
-        mode === "silent_strip" &&
-        !s.isAppOwned &&
-        s.origin !== "manual-missing";
-
-      if (!needsReplace) {
-        return {
-          code: s.code,
-          codeUpper: s.code.toUpperCase(),
-          discountNodeId: s.discountNodeId ?? null,
-          isAppOwned: s.isAppOwned ?? false,
-          replacedDiscountNodeId: null as string | null,
-        };
-      }
-
+  } else {
+    const needsReplace = mode === "silent_strip" && !isAppOwned;
+    if (needsReplace) {
       try {
-        const result = await replaceInPlace(admin.graphql, { code: s.code });
-        return {
-          code: s.code,
-          codeUpper: s.code.toUpperCase(),
+        const result = await replaceInPlace(admin.graphql, { code });
+        prepared = {
+          code,
+          codeUpper: code.toUpperCase(),
           discountNodeId: result.discountNodeId,
           isAppOwned: true,
           replacedDiscountNodeId: result.replacedDiscountNodeId,
@@ -225,13 +183,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             : err instanceof Error
               ? err.message
               : "Replace-in-place failed.";
-        throw new Response(
-          `Could not replace "${s.code}" — ${message}`,
-          { status: 502 },
-        );
+        return {
+          fieldErrors: { codes: `Could not replace "${code}" — ${message}` },
+          values: { name, mode },
+        };
       }
-    }),
-  );
+    } else {
+      prepared = {
+        code,
+        codeUpper: code.toUpperCase(),
+        discountNodeId: discountNodeId ?? null,
+        isAppOwned,
+        replacedDiscountNodeId: null,
+      };
+    }
+  }
 
   const offer = await prisma.protectedOffer.create({
     data: {
@@ -240,13 +206,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       mode,
       status: "active",
       codes: {
-        create: prepared.map((p) => ({
-          code: p.code,
-          codeUpper: p.codeUpper,
-          discountNodeId: p.discountNodeId,
-          isAppOwned: p.isAppOwned,
-          replacedDiscountNodeId: p.replacedDiscountNodeId,
-        })),
+        create: [
+          {
+            code: prepared.code,
+            codeUpper: prepared.codeUpper,
+            discountNodeId: prepared.discountNodeId,
+            isAppOwned: prepared.isAppOwned,
+            replacedDiscountNodeId: prepared.replacedDiscountNodeId,
+          },
+        ],
       },
     },
   });
@@ -257,10 +225,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // -- View -------------------------------------------------------------------
 
 export default function NewOffer() {
-  const { suggested, other, suggestError } = useLoaderData<typeof loader>();
+  const { suggestions, suggestError, isFirstOffer } = useLoaderData<typeof loader>();
   const rawActionData = useActionData<typeof action>();
-  // Narrow out the create-discount fetcher response shape — it shares the
-  // action URL but is consumed by a fetcher in <CreateNewDiscount/>.
   const actionData =
     rawActionData && "fieldErrors" in rawActionData ? rawActionData : undefined;
 
@@ -271,11 +237,10 @@ export default function NewOffer() {
     <OfferForm
       pageHeading="New protected offer"
       submitLabel="Create offer"
-      suggested={suggested}
-      other={other}
+      suggestions={suggestions}
       fieldErrors={fieldErrors}
       defaultValues={{
-        name: actionData?.values?.name,
+        name: actionData?.values?.name ?? (isFirstOffer ? "Starter" : undefined),
         mode,
       }}
       suggestError={suggestError}

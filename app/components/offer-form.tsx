@@ -3,21 +3,22 @@
  * Standard: docs/polaris-standards.md §14 (Details / edit-form pattern)
  * Related: docs/system-design.md § Replace-in-place (T34)
  */
-import { Form, useSubmit } from "react-router";
+import { useSubmit, useNavigation } from "react-router";
 import { useRef, useState } from "react";
 
 import {
-  CodePicker,
+  ProtectedCodeInput,
   type CodePickerSuggestion,
-  type SelectedCode,
-} from "./code-picker";
+} from "./protected-code-input";
 import { ReplaceInPlaceModal } from "./replace-in-place-modal";
+import { DiscountPreview, type CodeSummary } from "./discount-preview";
+
+export type { CodePickerSuggestion };
 
 export type OfferFormProps = {
   pageHeading: string;
   submitLabel: string;
-  suggested: CodePickerSuggestion[];
-  other: CodePickerSuggestion[];
+  suggestions: CodePickerSuggestion[];
   fieldErrors?: {
     name?: string;
     codes?: string;
@@ -30,20 +31,10 @@ export type OfferFormProps = {
   suggestError?: string | null;
 };
 
-function nativeCodesNeedingReplacement(selected: SelectedCode[]): string[] {
-  // "suggested" / "other" / "existing" all mean the code resolves to a native
-  // non-app-owned Shopify discount. "manual-missing" means we just created
-  // an app-owned discount for it via T33 — no replace-in-place needed.
-  return selected
-    .filter((s) => !s.isAppOwned && s.origin !== "manual-missing")
-    .map((s) => s.code);
-}
-
 export function OfferForm({
   pageHeading,
   submitLabel,
-  suggested,
-  other,
+  suggestions,
   fieldErrors,
   defaultValues,
   suggestError,
@@ -52,41 +43,45 @@ export function OfferForm({
   const [mode, setMode] = useState<"block" | "silent_strip">(
     defaultValues?.mode ?? "silent_strip",
   );
-  const [pendingReplaceCodes, setPendingReplaceCodes] = useState<
-    string[] | null
-  >(null);
+  const [pendingReplaceCode, setPendingReplaceCode] = useState<string | null>(
+    null,
+  );
+  const [summary, setSummary] = useState<CodeSummary>({ kind: "none" });
   const formRef = useRef<HTMLFormElement>(null);
   const submit = useSubmit();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state !== "idle";
 
-  function readSelectedFromForm(): SelectedCode[] {
+  function handleSubmit() {
     const form = formRef.current;
-    if (!form) return [];
-    const raw = new FormData(form).get("selectedCodes");
-    if (typeof raw !== "string") return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as SelectedCode[]) : [];
-    } catch {
-      return [];
-    }
-  }
+    if (!form) return;
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    if (mode !== "silent_strip") return;
-    const selected = readSelectedFromForm();
-    const needs = nativeCodesNeedingReplacement(selected);
-    if (needs.length === 0) return;
-    e.preventDefault();
-    setPendingReplaceCodes(needs);
+    const data = new FormData(form);
+    const origin = data.get("protectedCodeOrigin");
+    const isAppOwned = data.get("protectedCodeIsAppOwned");
+    const code = String(data.get("protectedCode") ?? "");
+    const currentMode = String(data.get("mode") ?? mode);
+
+    if (
+      origin === "existing" &&
+      isAppOwned === "false" &&
+      currentMode === "silent_strip" &&
+      code
+    ) {
+      setPendingReplaceCode(code);
+      return;
+    }
+
+    submit(form);
   }
 
   function confirmReplace() {
-    setPendingReplaceCodes(null);
+    setPendingReplaceCode(null);
     if (formRef.current) submit(formRef.current);
   }
 
   return (
-    <Form method="post" ref={formRef} onSubmit={onSubmit}>
+    <form method="post" ref={formRef}>
       <s-page heading={pageHeading}>
         <s-link slot="breadcrumb-actions" href="/app/offers">
           Offers
@@ -94,8 +89,13 @@ export function OfferForm({
         <s-button slot="secondary-actions" href="/app/offers">
           Cancel
         </s-button>
-        <s-button slot="primary-action" variant="primary" type="submit">
-          {submitLabel}
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? "Saving…" : submitLabel}
         </s-button>
 
         {suggestError ? (
@@ -109,13 +109,11 @@ export function OfferForm({
           <s-banner tone="critical">{fieldErrors.form}</s-banner>
         ) : null}
 
-        {pendingReplaceCodes ? (
-          <ReplaceInPlaceModal
-            codes={pendingReplaceCodes}
-            onConfirm={confirmReplace}
-            onCancel={() => setPendingReplaceCodes(null)}
-          />
-        ) : null}
+        <ReplaceInPlaceModal
+          code={pendingReplaceCode}
+          onConfirm={confirmReplace}
+          onCancel={() => setPendingReplaceCode(null)}
+        />
 
         <s-section heading="Offer information">
           <s-grid gap="base">
@@ -129,44 +127,48 @@ export function OfferForm({
               error={fieldErrors?.name}
               onChange={(e) => setName(e.currentTarget.value)}
             />
+            <s-grid gap="small-300">
+              <s-choice-list
+                name="mode"
+                label="Enforcement mode"
+                labelAccessibilityVisibility="visible"
+                values={[mode]}
+                onChange={(e) => {
+                  const el = e.currentTarget as HTMLElement & {
+                    values?: string[];
+                  };
+                  const [value] = el.values ?? [];
+                  if (value === "silent_strip" || value === "block")
+                    setMode(value);
+                }}
+              >
+                <s-choice value="silent_strip">
+                  Silently skip the discount (recommended)
+                </s-choice>
+                <s-choice value="block">Block their checkout</s-choice>
+              </s-choice-list>
+              <s-paragraph color="subdued">
+                {mode === "silent_strip"
+                  ? "The customer can still check out — they just won't get the discount. Works best for most stores."
+                  : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
+              </s-paragraph>
+            </s-grid>
           </s-grid>
         </s-section>
 
-        <s-section heading="Protected codes">
-          <CodePicker
-            suggested={suggested}
-            other={other}
+        <s-section heading="Protected code">
+          <ProtectedCodeInput
+            mode={mode}
+            suggestions={suggestions}
             error={fieldErrors?.codes}
+            onSummaryChange={setSummary}
           />
         </s-section>
 
-        {/* Aside: enforcement mode is secondary — narrower column keeps the
-            main flow focused on naming and picking codes */}
-        <s-section slot="aside" heading="Enforcement mode">
-          <s-grid gap="small-300">
-            <s-choice-list
-              name="mode"
-              label="Enforcement mode"
-              labelAccessibilityVisibility="exclusive"
-              values={[mode]}
-              onChange={(e) => {
-                const value = (e.target as HTMLInputElement | null)?.value;
-                if (value === "silent_strip" || value === "block") setMode(value);
-              }}
-            >
-              <s-choice value="silent_strip">
-                Silently skip the discount (recommended)
-              </s-choice>
-              <s-choice value="block">Block their checkout</s-choice>
-            </s-choice-list>
-            <s-paragraph color="subdued">
-              {mode === "silent_strip"
-                ? "The customer can still check out — they just won't get the discount. Works best for most stores."
-                : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
-            </s-paragraph>
-          </s-grid>
+        <s-section slot="aside" heading="Summary">
+          <DiscountPreview summary={summary} />
         </s-section>
       </s-page>
-    </Form>
+    </form>
   );
 }
