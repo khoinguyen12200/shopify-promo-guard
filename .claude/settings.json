@@ -1,8 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "enabledPlugins": {
-    "shopify-plugin@shopify-ai-toolkit": true
-  },
   "permissions": {
     "allow": [
       "Bash(git status)",
@@ -79,5 +76,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "shopify-plugin@shopify-ai-toolkit": true,
+    "andrej-karpathy-skills@karpathy-skills": true
   }
 }

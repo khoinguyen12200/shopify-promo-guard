@@ -196,13 +196,10 @@ export default function OfferDetail() {
         Edit offer
       </s-button>
 
-      {/* Aside: secondary metadata — status, mode, codes */}
+      {/* Aside: secondary metadata — status, enforcement mode, codes */}
       <s-section slot="aside" heading="Status">
         <s-grid gap="small-300">
-          <s-stack direction="inline" gap="small-300" alignItems="center">
-            <s-badge tone={badge.tone}>{badge.label}</s-badge>
-            <s-text>{modeLabel(offer.mode)}</s-text>
-          </s-stack>
+          <s-badge tone={badge.tone}>{badge.label}</s-badge>
           <s-paragraph color="subdued">
             Created {formatDate(offer.createdAt)}
           </s-paragraph>
@@ -210,6 +207,17 @@ export default function OfferDetail() {
             <input type="hidden" name="intent" value={pauseIntent} />
             <s-button type="submit">{pauseLabel}</s-button>
           </Form>
+        </s-grid>
+      </s-section>
+
+      <s-section slot="aside" heading="Enforcement mode">
+        <s-grid gap="small-300">
+          <s-text>{modeLabel(offer.mode)}</s-text>
+          <s-paragraph color="subdued">
+            {offer.mode === "silent_strip"
+              ? "The customer can still check out — they just won't get the discount. Works best for most stores."
+              : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
+          </s-paragraph>
         </s-grid>
       </s-section>
 
