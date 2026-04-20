@@ -427,4 +427,128 @@ describe("scorePostOrder", () => {
       expect(v).toMatch(/^[0-9a-f]{8}$/);
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Case 13 — Billing address matches stored shipping (cross-slot)
+  // -------------------------------------------------------------------------
+  it("matches incoming billing against a stored shipping address", async () => {
+    const probe = await scorePostOrder(
+      baseInput({
+        signals: {
+          billingAddressLine1: "123 Home Ln",
+          billingAddressZip: "94000",
+          billingAddressCountry: "US",
+        },
+      }),
+    );
+    const billingHash = probe.hashes["billing_address_full"];
+    expect(billingHash).toBeDefined();
+
+    mockFindMany.mockResolvedValue([
+      {
+        id: "rec_1",
+        phoneHash: null,
+        emailCanonicalHash: null,
+        addressFullHash: billingHash, // stored in shipping slot on prior order
+        billingAddressFullHash: null,
+        ipHash24: null,
+        cardNameLast4Hash: null,
+        emailMinhashSketch: null,
+        addressMinhashSketch: null,
+      },
+    ]);
+
+    const result = await scorePostOrder(
+      baseInput({
+        signals: {
+          billingAddressLine1: "123 Home Ln",
+          billingAddressZip: "94000",
+          billingAddressCountry: "US",
+        },
+      }),
+    );
+
+    expect(result.score).toBe(10);
+    expect(result.decision).toBe("block");
+    expect(result.matchedSignals).toContain("address_full");
+  });
+
+  // -------------------------------------------------------------------------
+  // Case 14 — Shipping varies, stored billing matches → address_full match
+  // This is the "PO box + real credit-card address" abuse pattern.
+  // -------------------------------------------------------------------------
+  it("matches incoming shipping against a stored billing address", async () => {
+    const probe = await scorePostOrder(
+      baseInput({
+        signals: {
+          addressLine1: "123 Home Ln",
+          addressZip: "94000",
+          addressCountry: "US",
+        },
+      }),
+    );
+    const shippingHash = probe.hashes["address_full"];
+    expect(shippingHash).toBeDefined();
+
+    mockFindMany.mockResolvedValue([
+      {
+        id: "rec_1",
+        phoneHash: null,
+        emailCanonicalHash: null,
+        addressFullHash: "deadbeef", // different shipping on prior order
+        billingAddressFullHash: shippingHash, // prior billing = our shipping
+        ipHash24: null,
+        cardNameLast4Hash: null,
+        emailMinhashSketch: null,
+        addressMinhashSketch: null,
+      },
+    ]);
+
+    const result = await scorePostOrder(
+      baseInput({
+        signals: {
+          addressLine1: "123 Home Ln",
+          addressZip: "94000",
+          addressCountry: "US",
+        },
+      }),
+    );
+
+    expect(result.score).toBe(10);
+    expect(result.decision).toBe("block");
+    expect(result.matchedSignals).toContain("address_full");
+  });
+
+  // -------------------------------------------------------------------------
+  // Case 15 — Card name+last4 exact match at weight 8 (→ review)
+  // -------------------------------------------------------------------------
+  it("scores card_name_last4 at weight 8 (→ review)", async () => {
+    const probe = await scorePostOrder(
+      baseInput({ signals: { cardNameLast4: "jane doe:4242" } }),
+    );
+    const cardHash = probe.hashes["card_name_last4"];
+    expect(cardHash).toBeDefined();
+
+    mockFindMany.mockResolvedValue([
+      {
+        id: "rec_1",
+        phoneHash: null,
+        emailCanonicalHash: null,
+        addressFullHash: null,
+        billingAddressFullHash: null,
+        ipHash24: null,
+        cardNameLast4Hash: cardHash,
+        emailMinhashSketch: null,
+        addressMinhashSketch: null,
+      },
+    ]);
+
+    const result = await scorePostOrder(
+      baseInput({ signals: { cardNameLast4: "jane doe:4242" } }),
+    );
+
+    expect(result.score).toBe(8);
+    expect(result.decision).toBe("review");
+    expect(result.matchedSignals).toContain("card_name_last4");
+  });
 });

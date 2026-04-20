@@ -19,3 +19,4 @@ pub const W_ADDRESS_MINHASH_WEAK: u32 = 4;
 pub const W_CUSTOMER_TAG: u32 = 10;
 pub const W_IP_V4_24: u32 = 2;
 pub const W_IP_V6_48: u32 = 2;
+pub const W_CARD_NAME_LAST4: u32 = 8;

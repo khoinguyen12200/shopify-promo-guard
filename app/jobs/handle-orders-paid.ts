@@ -30,6 +30,7 @@ import {
 import { encrypt, loadKek, unwrapDek } from "../lib/crypto.server.js";
 import { enqueueJob, type JobHandler } from "../lib/jobs.server.js";
 import { addressTrigrams, fullKey } from "../lib/normalize/address.server.js";
+import { normalizeCardNameLast4 } from "../lib/normalize/card.server.js";
 import {
   canonicalEmail,
   emailTrigrams,
@@ -98,12 +99,97 @@ function pickAddress(o: OrderJson): OrderAddress | null {
   return o.shipping_address ?? o.billing_address ?? null;
 }
 
+function pickBillingAddress(o: OrderJson): OrderAddress | null {
+  // When we have both shipping and billing, the billing slot carries the
+  // billing row. If only billing is set, it already became the primary via
+  // pickAddress — leave the billing slot null.
+  if (!o.shipping_address) return null;
+  return o.billing_address ?? null;
+}
+
 function customerGid(o: OrderJson): string | undefined {
   return o.customer?.admin_graphql_api_id ?? undefined;
 }
 
 function orderGid(o: OrderJson): string | undefined {
   return o.admin_graphql_api_id;
+}
+
+// ---------------------------------------------------------------------------
+// Card name + last4 fetch — the orders/paid webhook payload doesn't expose
+// the cardholder name, so we query the order's transactions via Admin
+// GraphQL. Requires read_orders scope (already granted).
+// ---------------------------------------------------------------------------
+
+const ORDER_CARD_DETAILS_QUERY = /* GraphQL */ `
+  query OrderCardDetails($id: ID!) {
+    order(id: $id) {
+      transactions(first: 5) {
+        kind
+        status
+        paymentDetails {
+          ... on CardPaymentDetails {
+            name
+            number
+          }
+        }
+      }
+    }
+  }
+`;
+
+type GqlResponse<T> = {
+  data?: T;
+  errors?: Array<{ message: string }>;
+};
+
+type CardTxn = {
+  kind?: string | null;
+  status?: string | null;
+  paymentDetails?: { name?: string | null; number?: string | null } | null;
+};
+
+type OrderCardDetailsData = {
+  order: { transactions: CardTxn[] | null } | null;
+};
+
+async function fetchOrderCardNameLast4(
+  graphql: (
+    q: string,
+    opts?: { variables: Record<string, unknown> },
+  ) => Promise<unknown>,
+  orderId: string,
+): Promise<string | null> {
+  let body: GqlResponse<OrderCardDetailsData> | undefined;
+  try {
+    const raw = await graphql(ORDER_CARD_DETAILS_QUERY, {
+      variables: { id: orderId },
+    });
+    if (!raw) return null;
+    body =
+      typeof (raw as { json?: unknown }).json === "function"
+        ? ((await (raw as { json: () => Promise<unknown> }).json()) as GqlResponse<OrderCardDetailsData>)
+        : (raw as GqlResponse<OrderCardDetailsData>);
+  } catch (err) {
+    console.error(
+      "[orders_paid] fetchOrderCardNameLast4 failed",
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+  const txns = body?.data?.order?.transactions ?? [];
+  for (const t of txns) {
+    const status = (t.status ?? "").toUpperCase();
+    if (status && status !== "SUCCESS") continue;
+    const card = t.paymentDetails;
+    if (!card) continue;
+    const digits = (card.number ?? "").match(/\d/g) ?? [];
+    if (digits.length < 4) continue;
+    const last4 = digits.slice(-4).join("");
+    const key = normalizeCardNameLast4(card.name ?? "", last4);
+    if (key) return key;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +287,7 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
 
   // ---- Normalize signals -------------------------------------------------
   const addr = pickAddress(order);
+  const billingAddrRaw = pickBillingAddress(order);
   const customerPhoneRaw = order.phone ?? order.customer?.phone ?? null;
   const ip = pickIp(order);
 
@@ -245,6 +332,22 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
       )
     : undefined;
 
+  // Billing: only pass when billing differs from primary (§ billing slot).
+  const billingFullKeyStr = billingAddrRaw
+    ? fullKey({
+        line1: billingAddrRaw.address1 ?? "",
+        line2: billingAddrRaw.address2 ?? "",
+        zip: billingAddrRaw.zip ?? "",
+        countryCode: billingAddrRaw.country_code ?? "",
+      })
+    : "";
+  const billingDiffers =
+    billingAddrRaw != null && billingFullKeyStr !== fullKeyStr;
+  const billingAddrForStorage = billingDiffers ? billingAddrRaw : null;
+
+  // Card: requires an Admin GraphQL round-trip — webhook payload has no name.
+  const cardNameLast4 = await fetchOrderCardNameLast4(adminClient.graphql, oid);
+
   // ---- Score (also computes hashes we'll persist) -----------------------
   const scoreResult = await scorePostOrder({
     shopSalt: shop.salt,
@@ -256,7 +359,20 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
       addressLine2,
       addressZip,
       addressCountry,
+      billingAddressLine1: billingDiffers
+        ? (billingAddrRaw?.address1 ?? "")
+        : undefined,
+      billingAddressLine2: billingDiffers
+        ? (billingAddrRaw?.address2 ?? "")
+        : undefined,
+      billingAddressZip: billingDiffers
+        ? (billingAddrRaw?.zip ?? "")
+        : undefined,
+      billingAddressCountry: billingDiffers
+        ? (billingAddrRaw?.country_code ?? "")
+        : undefined,
       ip,
+      cardNameLast4: cardNameLast4 ?? undefined,
     },
     emailSketch,
     addressSketch,
@@ -277,12 +393,20 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
       emailCiphertext: canonEmail ? encrypt(canonEmail, dek) : null,
       phoneCiphertext: canonPhone ? encrypt(canonPhone, dek) : null,
       addressCiphertext: addr ? encrypt(JSON.stringify(addr), dek) : null,
+      billingAddressCiphertext: billingAddrForStorage
+        ? encrypt(JSON.stringify(billingAddrForStorage), dek)
+        : null,
       ipCiphertext: ip ? encrypt(ip, dek) : null,
+      cardNameLast4Ciphertext: cardNameLast4
+        ? encrypt(cardNameLast4, dek)
+        : null,
 
       phoneHash: hashes["phone"] ?? null,
       emailCanonicalHash: hashes["email_canonical"] ?? null,
       addressFullHash: hashes["address_full"] ?? null,
-      ipHash24: hashes["ip_v4_24"] ?? null,
+      billingAddressFullHash: hashes["billing_address_full"] ?? null,
+      ipHash24: hashes["ip_v4_24"] ?? hashes["ip_v6_48"] ?? null,
+      cardNameLast4Hash: hashes["card_name_last4"] ?? null,
 
       emailMinhashSketch: emailSketch ? JSON.stringify(emailSketch) : null,
       addressMinhashSketch: addressSketch
@@ -382,7 +506,7 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
         email: hashes["email_canonical"] ?? "",
         addr_full: hashes["address_full"] ?? "",
         addr_house: hashes["address_house"] ?? "",
-        ip24: hashes["ip_v4_24"] ?? "",
+        ip24: hashes["ip_v4_24"] ?? hashes["ip_v6_48"] ?? "",
         device: hashes["device"] ?? "",
         email_sketch: padSketch(emailSketch),
         addr_sketch: padSketch(addressSketch),

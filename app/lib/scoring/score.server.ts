@@ -6,6 +6,7 @@
 import { canonicalEmail } from "../normalize/email.server.js";
 import { canonicalPhone } from "../normalize/phone.server.js";
 import { fullKey, houseKey } from "../normalize/address.server.js";
+import { ipPrefixKey } from "../normalize/ip.server.js";
 import { hashForLookup, hashToHex } from "../hash.server.js";
 import { jaccardEstimate } from "../minhash.server.js";
 import {
@@ -26,7 +27,17 @@ export interface OrderSignals {
   addressLine2?: string;
   addressZip?: string;
   addressCountry?: string;
+  /**
+   * Billing address when distinct from shipping. When absent, scoring only
+   * compares the primary address across both shipping and billing columns.
+   */
+  billingAddressLine1?: string;
+  billingAddressLine2?: string;
+  billingAddressZip?: string;
+  billingAddressCountry?: string;
   ip?: string;
+  /** Normalized `name:last4` key — see normalize/card.server.ts. */
+  cardNameLast4?: string;
   deviceFingerprint?: string;
 }
 
@@ -134,16 +145,49 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
     // for storage. The full hash lookup covers building-level matches.
   }
 
-  // IP (post-order only)
+  // Billing address — separate slot that catches the pattern where an abuser
+  // varies the shipping address but keeps the same billing address (real
+  // credit-card address). Same tag as shipping so the hash spaces are shared
+  // and cross-matching either column is valid.
+  const hasBilling =
+    signals.billingAddressLine1 ||
+    signals.billingAddressZip ||
+    signals.billingAddressCountry;
+  if (hasBilling) {
+    const billingFullKey = fullKey({
+      line1: signals.billingAddressLine1 ?? "",
+      line2: signals.billingAddressLine2 ?? "",
+      zip: signals.billingAddressZip ?? "",
+      countryCode: signals.billingAddressCountry ?? "",
+    });
+    const hBillingFull = lookupHash("addr_full", billingFullKey, salt);
+    hashes["billing_address_full"] = hBillingFull;
+    orClauses.push({ addressFullHash: hBillingFull });
+    orClauses.push({ billingAddressFullHash: hBillingFull });
+  }
+  if (hashes["address_full"]) {
+    // Shipping side should also check against stored billing columns — the
+    // same abuser rotating accounts has their real billing address matching
+    // a prior order's billing slot.
+    orClauses.push({ billingAddressFullHash: hashes["address_full"] });
+  }
+
+  // IP (post-order only). §4.8: IPv4 → /24, IPv6 → /48. The tags differ so
+  // v4 and v6 hashes share `ipHash24` without colliding across families.
   if (signals.ip) {
-    // Derive /24 key for IPv4: take first 3 octets
-    const v4match = signals.ip.match(/^(\d+\.\d+\.\d+)\.\d+$/);
-    if (v4match) {
-      const v4key = v4match[1];
-      const h = lookupHash("ip_v4_24", v4key, salt);
-      hashes["ip_v4_24"] = h;
+    const prefix = ipPrefixKey(signals.ip);
+    if (prefix) {
+      const h = lookupHash(prefix.tag, prefix.key, salt);
+      hashes[prefix.tag] = h;
       orClauses.push({ ipHash24: h });
     }
+  }
+
+  // Card name + last4 — §4.9 exact-match signal.
+  if (signals.cardNameLast4) {
+    const h = lookupHash("card_name_last4", signals.cardNameLast4, salt);
+    hashes["card_name_last4"] = h;
+    orClauses.push({ cardNameLast4Hash: h });
   }
 
   // Device fingerprint (stored as hash for future use, no DB column yet)
@@ -160,7 +204,9 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
     phoneHash: string | null;
     emailCanonicalHash: string | null;
     addressFullHash: string | null;
+    billingAddressFullHash: string | null;
     ipHash24: string | null;
+    cardNameLast4Hash: string | null;
     emailMinhashSketch: string | null;
     addressMinhashSketch: string | null;
   }[] = [];
@@ -176,7 +222,9 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
         phoneHash: true,
         emailCanonicalHash: true,
         addressFullHash: true,
+        billingAddressFullHash: true,
         ipHash24: true,
+        cardNameLast4Hash: true,
         emailMinhashSketch: true,
         addressMinhashSketch: true,
       },
@@ -195,7 +243,9 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
         phoneHash: true,
         emailCanonicalHash: true,
         addressFullHash: true,
+        billingAddressFullHash: true,
         ipHash24: true,
+        cardNameLast4Hash: true,
         emailMinhashSketch: true,
         addressMinhashSketch: true,
       },
@@ -255,25 +305,44 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
     }
 
     // Rule 4.4 / 4.5 / 4.6 — Address (full exact > house exact > fuzzy)
+    //
+    // Address is now a 2x2 match: incoming {shipping, billing} vs stored
+    // {shipping, billing}. Any pairing counts as one match (no double-dip).
+    // The pattern we care about: abuser varies shipping but keeps the same
+    // billing — matches stored.billing vs incoming.billing, OR stored.billing
+    // vs incoming.shipping when a prior order's billing happens to be our
+    // current shipping (rarer).
     let addrMatched = false;
-    if (
-      hashes["address_full"] &&
-      record.addressFullHash === hashes["address_full"]
-    ) {
-      s += WEIGHTS.address_full_exact;
-      facts.push("address_full");
-      addrMatched = true;
+    const incomingAddrHashes = [
+      hashes["address_full"],
+      hashes["billing_address_full"],
+    ].filter((h): h is string => !!h);
+    const recordAddrHashes = [
+      record.addressFullHash,
+      record.billingAddressFullHash,
+    ].filter((h): h is string => !!h);
+    for (const ih of incomingAddrHashes) {
+      if (addrMatched) break;
+      for (const rh of recordAddrHashes) {
+        if (ih === rh) {
+          s += WEIGHTS.address_full_exact;
+          facts.push("address_full");
+          addrMatched = true;
+          break;
+        }
+      }
     }
-    // address_house: same DB column (addressFullHash stores addr_house hash too
-    // when full is unavailable) — but per spec §4.5, house key has a different
-    // tag so we check hashes["address_house"] against addressFullHash.
-    // In practice the DB stores both in separate records or uses the full hash;
-    // for MVP we check if the stored record's full-hash equals our house-hash.
-    if (!addrMatched && hashes["address_house"] && record.addressFullHash) {
-      if (record.addressFullHash === hashes["address_house"]) {
-        s += WEIGHTS.address_house_exact;
-        facts.push("address_house");
-        addrMatched = true;
+    // address_house: historical simplification — stored column is full-hash,
+    // but we keep the incoming house-hash check against both address columns
+    // to catch legacy rows where the stored address had no unit suffix.
+    if (!addrMatched && hashes["address_house"]) {
+      for (const rh of recordAddrHashes) {
+        if (rh === hashes["address_house"]) {
+          s += WEIGHTS.address_house_exact;
+          facts.push("address_house");
+          addrMatched = true;
+          break;
+        }
       }
     }
     if (!addrMatched && input.addressSketch && record.addressMinhashSketch) {
@@ -290,10 +359,26 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
       }
     }
 
-    // Rule 4.8 — IP (post-order only)
+    // Rule 4.8 — IP (post-order only). Only one of v4/v6 is ever populated
+    // per incoming order; the other hash slot is absent from `hashes`.
     if (hashes["ip_v4_24"] && record.ipHash24 === hashes["ip_v4_24"]) {
       s += WEIGHTS.ip_v4_24;
       facts.push("ip_v4_24");
+    } else if (
+      hashes["ip_v6_48"] &&
+      record.ipHash24 === hashes["ip_v6_48"]
+    ) {
+      s += WEIGHTS.ip_v6_48;
+      facts.push("ip_v6_48");
+    }
+
+    // Rule 4.9 — Card name + last4 (exact match).
+    if (
+      hashes["card_name_last4"] &&
+      record.cardNameLast4Hash === hashes["card_name_last4"]
+    ) {
+      s += WEIGHTS.card_name_last4;
+      facts.push("card_name_last4");
     }
 
     if (s > best.score) {

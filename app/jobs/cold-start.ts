@@ -30,10 +30,12 @@ import {
   type JobHandlerCtx,
 } from "../lib/jobs.server.js";
 import { addressTrigrams, fullKey } from "../lib/normalize/address.server.js";
+import { normalizeCardNameLast4 } from "../lib/normalize/card.server.js";
 import {
   canonicalEmail,
   emailTrigrams,
 } from "../lib/normalize/email.server.js";
+import { ipPrefixKey } from "../lib/normalize/ip.server.js";
 import { canonicalPhone } from "../lib/normalize/phone.server.js";
 import { computeSketch } from "../lib/minhash.server.js";
 import { hashForLookup, hashToHex } from "../lib/hash.server.js";
@@ -144,6 +146,16 @@ const ORDERS_BY_DISCOUNT_CODE = /* GraphQL */ `
             zip
             countryCodeV2
           }
+          transactions(first: 5) {
+            kind
+            status
+            paymentDetails {
+              ... on CardPaymentDetails {
+                name
+                number
+              }
+            }
+          }
         }
       }
     }
@@ -158,6 +170,17 @@ interface OrderAddress {
   countryCodeV2?: string | null;
 }
 
+interface CardDetails {
+  name?: string | null;
+  number?: string | null;
+}
+
+interface OrderTransaction {
+  kind?: string | null;
+  status?: string | null;
+  paymentDetails?: CardDetails | null;
+}
+
 interface OrderNode {
   id: string;
   name?: string | null;
@@ -168,6 +191,7 @@ interface OrderNode {
   discountCodes?: string[] | null;
   shippingAddress?: OrderAddress | null;
   billingAddress?: OrderAddress | null;
+  transactions?: OrderTransaction[] | null;
 }
 
 interface OrdersQueryData {
@@ -264,8 +288,41 @@ function lookupHex(tag: string, value: string, salt: Uint8Array): string {
   return hashToHex(hashForLookup(tag, new TextEncoder().encode(value), salt));
 }
 
-function pickAddress(n: OrderNode): OrderAddress | null {
-  return n.shippingAddress ?? n.billingAddress ?? null;
+function addressFullKeyOrNull(addr: OrderAddress | null): string | null {
+  if (!addr) return null;
+  return fullKey({
+    line1: addr.address1 ?? "",
+    line2: addr.address2 ?? "",
+    zip: addr.zip ?? "",
+    countryCode: addr.countryCodeV2 ?? "",
+  });
+}
+
+/**
+ * Extract cardholder name + last4 from the first SALE/CAPTURE/AUTHORIZATION
+ * transaction with CardPaymentDetails. Returns null when no usable card
+ * transaction exists (gift card, PayPal, wallet-only, etc.).
+ *
+ * Shopify returns `number` as a masked string like "•••• •••• •••• 1234" or
+ * "XXXX-XXXX-XXXX-1234" depending on gateway — we just pick the trailing 4
+ * decimal digits.
+ */
+function pickCardNameLast4(order: OrderNode): string | null {
+  const transactions = order.transactions ?? [];
+  for (const t of transactions) {
+    const status = (t.status ?? "").toUpperCase();
+    if (status && status !== "SUCCESS") continue;
+    const card = t.paymentDetails;
+    if (!card) continue;
+    const name = card.name ?? "";
+    const num = card.number ?? "";
+    const digits = num.match(/\d/g) ?? [];
+    if (digits.length < 4) continue;
+    const last4 = digits.slice(-4).join("");
+    const key = normalizeCardNameLast4(name, last4);
+    if (key) return key;
+  }
+  return null;
 }
 
 function padSketch(
@@ -279,8 +336,13 @@ interface BackfillSignals {
   hashes: Record<string, string>;
   canonEmail: string | null;
   canonPhone: string | null;
+  /** Primary (shipping-preferred) address used for MinHash + ciphertext. */
   addr: OrderAddress | null;
+  /** Billing address when distinct from shipping; null otherwise. */
+  billingAddr: OrderAddress | null;
   ip: string | null;
+  /** Normalized `name:last4` key; null when no usable card transaction. */
+  cardNameLast4: string | null;
   emailSketch?: number[];
   addressSketch?: number[];
 }
@@ -296,7 +358,10 @@ function extractSignals(
     order.phone ?? order.customer?.phone ?? null,
     null,
   );
-  const addr = pickAddress(order);
+  const shippingAddr = order.shippingAddress ?? null;
+  const billingAddrRaw = order.billingAddress ?? null;
+  // Prefer shipping as the "primary" address for ciphertext + sketches.
+  const addr = shippingAddr ?? billingAddrRaw;
   const ip = order.clientIp ?? null;
 
   const hashes: Record<string, string> = {};
@@ -308,22 +373,40 @@ function extractSignals(
     hashes["phone"] = lookupHex("phone", canonPhone, salt);
   }
 
-  let fullKeyStr = "";
-  if (addr) {
-    fullKeyStr = fullKey({
-      line1: addr.address1 ?? "",
-      line2: addr.address2 ?? "",
-      zip: addr.zip ?? "",
-      countryCode: addr.countryCodeV2 ?? "",
-    });
+  const fullKeyStr = addressFullKeyOrNull(addr) ?? "";
+  if (fullKeyStr) {
     hashes["address_full"] = lookupHex("addr_full", fullKeyStr, salt);
   }
 
-  if (ip) {
-    const v4match = ip.match(/^(\d+\.\d+\.\d+)\.\d+$/);
-    if (v4match) {
-      hashes["ip_v4_24"] = lookupHex("ip_v4_24", v4match[1], salt);
-    }
+  // Billing: only emit a second hash when billing exists AND its full-key
+  // differs from the primary. Collapses the common (shipping == billing) case.
+  const billingFullKeyStr = shippingAddr
+    ? addressFullKeyOrNull(billingAddrRaw)
+    : null;
+  const billingAddr =
+    billingFullKeyStr && billingFullKeyStr !== fullKeyStr
+      ? billingAddrRaw
+      : null;
+  if (billingAddr && billingFullKeyStr) {
+    hashes["billing_address_full"] = lookupHex(
+      "addr_full",
+      billingFullKeyStr,
+      salt,
+    );
+  }
+
+  const ipPrefix = ip ? ipPrefixKey(ip) : null;
+  if (ipPrefix) {
+    hashes[ipPrefix.tag] = lookupHex(ipPrefix.tag, ipPrefix.key, salt);
+  }
+
+  const cardNameLast4 = pickCardNameLast4(order);
+  if (cardNameLast4) {
+    hashes["card_name_last4"] = lookupHex(
+      "card_name_last4",
+      cardNameLast4,
+      salt,
+    );
   }
 
   const emailSketch = canonEmail
@@ -346,7 +429,9 @@ function extractSignals(
     canonEmail,
     canonPhone,
     addr,
+    billingAddr,
     ip,
+    cardNameLast4,
     emailSketch,
     addressSketch,
   };
@@ -399,12 +484,21 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
       emailCiphertext: sig.canonEmail ? encrypt(sig.canonEmail, dek) : null,
       phoneCiphertext: sig.canonPhone ? encrypt(sig.canonPhone, dek) : null,
       addressCiphertext: sig.addr ? encrypt(JSON.stringify(sig.addr), dek) : null,
+      billingAddressCiphertext: sig.billingAddr
+        ? encrypt(JSON.stringify(sig.billingAddr), dek)
+        : null,
       ipCiphertext: sig.ip ? encrypt(sig.ip, dek) : null,
+      cardNameLast4Ciphertext: sig.cardNameLast4
+        ? encrypt(sig.cardNameLast4, dek)
+        : null,
 
       phoneHash: sig.hashes["phone"] ?? null,
       emailCanonicalHash: sig.hashes["email_canonical"] ?? null,
       addressFullHash: sig.hashes["address_full"] ?? null,
-      ipHash24: sig.hashes["ip_v4_24"] ?? null,
+      billingAddressFullHash: sig.hashes["billing_address_full"] ?? null,
+      ipHash24:
+        sig.hashes["ip_v4_24"] ?? sig.hashes["ip_v6_48"] ?? null,
+      cardNameLast4Hash: sig.hashes["card_name_last4"] ?? null,
 
       emailMinhashSketch: sig.emailSketch
         ? JSON.stringify(sig.emailSketch)
@@ -429,7 +523,7 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
         email: sig.hashes["email_canonical"] ?? "",
         addr_full: sig.hashes["address_full"] ?? "",
         addr_house: sig.hashes["address_house"] ?? "",
-        ip24: sig.hashes["ip_v4_24"] ?? "",
+        ip24: sig.hashes["ip_v4_24"] ?? sig.hashes["ip_v6_48"] ?? "",
         device: sig.hashes["device"] ?? "",
         email_sketch: padSketch(sig.emailSketch),
         addr_sketch: padSketch(sig.addressSketch),

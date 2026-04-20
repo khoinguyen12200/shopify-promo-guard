@@ -21,4 +21,5 @@ export const WEIGHTS = {
   customer_tag: 10,
   ip_v4_24: 2,
   ip_v6_48: 2,
+  card_name_last4: 8,
 } as const;

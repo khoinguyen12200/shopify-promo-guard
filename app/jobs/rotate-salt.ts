@@ -30,7 +30,11 @@ import {
   canonicalEmail,
   emailTrigrams,
 } from "../lib/normalize/email.server.js";
+import { ipPrefixKey } from "../lib/normalize/ip.server.js";
 import { canonicalPhone } from "../lib/normalize/phone.server.js";
+// Note: rotate-salt re-hashes everything with a fresh salt — we need the
+// same tagged-hash contract as handle-orders-paid / cold-start so Prisma
+// rows remain comparable across all three write paths.
 import { resolveShopGid } from "../lib/shop.server.js";
 import {
   mergeEntry,
@@ -76,10 +80,36 @@ interface RehashResult {
   phoneHash: string | null;
   emailCanonicalHash: string | null;
   addressFullHash: string | null;
+  billingAddressFullHash: string | null;
   ipHash24: string | null;
+  cardNameLast4Hash: string | null;
   emailMinhashSketch: string | null;
   addressMinhashSketch: string | null;
   entry: ShardEntry;
+}
+
+function parseAddress(raw: string | null): {
+  addressLine1: string;
+  addressLine2: string;
+  addressZip: string;
+  addressCountry: string;
+} {
+  let addressLine1 = "";
+  let addressLine2 = "";
+  let addressZip = "";
+  let addressCountry = "";
+  if (raw) {
+    try {
+      const a = JSON.parse(raw);
+      addressLine1 = a?.address1 ?? "";
+      addressLine2 = a?.address2 ?? "";
+      addressZip = a?.zip ?? "";
+      addressCountry = a?.country_code ?? a?.countryCodeV2 ?? "";
+    } catch {
+      // ignore — leaves address empty
+    }
+  }
+  return { addressLine1, addressLine2, addressZip, addressCountry };
 }
 
 function rehashOne(
@@ -90,45 +120,54 @@ function rehashOne(
   const emailPlain = tryDecryptUtf8(record.emailCiphertext, dek);
   const phonePlain = tryDecryptUtf8(record.phoneCiphertext, dek);
   const addrPlain = tryDecryptUtf8(record.addressCiphertext, dek);
+  const billingAddrPlain = tryDecryptUtf8(
+    record.billingAddressCiphertext,
+    dek,
+  );
   const ipPlain = tryDecryptUtf8(record.ipCiphertext, dek);
+  const cardPlain = tryDecryptUtf8(record.cardNameLast4Ciphertext, dek);
 
   const canonEmail = emailPlain ? canonicalEmail(emailPlain) : null;
   const canonPhone = phonePlain ? canonicalPhone(phonePlain, null) : null;
 
-  let addressLine1 = "";
-  let addressLine2 = "";
-  let addressZip = "";
-  let addressCountry = "";
-  if (addrPlain) {
-    try {
-      const a = JSON.parse(addrPlain);
-      addressLine1 = a?.address1 ?? "";
-      addressLine2 = a?.address2 ?? "";
-      addressZip = a?.zip ?? "";
-      addressCountry = a?.country_code ?? "";
-    } catch {
-      // ignore — leaves address empty
-    }
-  }
+  const addr = parseAddress(addrPlain);
   const addressFullStr = addrPlain
     ? fullKey({
-        line1: addressLine1,
-        line2: addressLine2,
-        zip: addressZip,
-        countryCode: addressCountry,
+        line1: addr.addressLine1,
+        line2: addr.addressLine2,
+        zip: addr.addressZip,
+        countryCode: addr.addressCountry,
       })
     : "";
 
-  const ip24 = ipPlain ? ipV4Slash24(ipPlain) : null;
+  const bill = parseAddress(billingAddrPlain);
+  const billingFullStr = billingAddrPlain
+    ? fullKey({
+        line1: bill.addressLine1,
+        line2: bill.addressLine2,
+        zip: bill.addressZip,
+        countryCode: bill.addressCountry,
+      })
+    : "";
+
+  const ipPrefix = ipPlain ? ipPrefixKey(ipPlain) : null;
 
   const phoneHash = canonPhone ? hashOrEmpty("phone", canonPhone, salt) : "";
   const emailCanonicalHash = canonEmail
     ? hashOrEmpty("email_canonical", canonEmail, salt)
     : "";
   const addressFullHash = addrPlain
-    ? hashOrEmpty("address_full", addressFullStr, salt)
+    ? hashOrEmpty("addr_full", addressFullStr, salt)
     : "";
-  const ipHash24 = ip24 ? hashOrEmpty("ip_v4_24", ip24, salt) : "";
+  const billingAddressFullHash = billingAddrPlain
+    ? hashOrEmpty("addr_full", billingFullStr, salt)
+    : "";
+  const ipHash24 = ipPrefix
+    ? hashOrEmpty(ipPrefix.tag, ipPrefix.key, salt)
+    : "";
+  const cardNameLast4Hash = cardPlain
+    ? hashOrEmpty("card_name_last4", cardPlain, salt)
+    : "";
 
   const emailSketchArr = canonEmail
     ? computeSketch(
@@ -166,17 +205,13 @@ function rehashOne(
     phoneHash: phoneHash || null,
     emailCanonicalHash: emailCanonicalHash || null,
     addressFullHash: addressFullHash || null,
+    billingAddressFullHash: billingAddressFullHash || null,
     ipHash24: ipHash24 || null,
+    cardNameLast4Hash: cardNameLast4Hash || null,
     emailMinhashSketch: emailSketchArr ? JSON.stringify(emailSketchArr) : null,
     addressMinhashSketch: addrSketchArr ? JSON.stringify(addrSketchArr) : null,
     entry,
   };
-}
-
-function ipV4Slash24(ip: string): string {
-  const parts = ip.split(".");
-  if (parts.length === 4) return `${parts[0]}.${parts[1]}.${parts[2]}`;
-  return ip;
 }
 
 function padSketch(
@@ -211,7 +246,9 @@ export const handleRotateSalt: JobHandler<unknown> = async (payload, ctx) => {
           phoneHash: res.phoneHash,
           emailCanonicalHash: res.emailCanonicalHash,
           addressFullHash: res.addressFullHash,
+          billingAddressFullHash: res.billingAddressFullHash,
           ipHash24: res.ipHash24,
+          cardNameLast4Hash: res.cardNameLast4Hash,
           emailMinhashSketch: res.emailMinhashSketch,
           addressMinhashSketch: res.addressMinhashSketch,
         },

@@ -113,15 +113,19 @@ model RedemptionRecord {
 
   customerGid String?
 
-  emailCiphertext   String?
-  phoneCiphertext   String?
-  addressCiphertext String?
-  ipCiphertext      String?
+  emailCiphertext          String?
+  phoneCiphertext          String?
+  addressCiphertext        String?
+  billingAddressCiphertext String?
+  ipCiphertext             String?
+  cardNameLast4Ciphertext  String?
 
-  phoneHash          String?
-  emailCanonicalHash String?
-  addressFullHash    String?
-  ipHash24           String?
+  phoneHash              String?
+  emailCanonicalHash     String?
+  addressFullHash        String?
+  billingAddressFullHash String?
+  ipHash24               String?
+  cardNameLast4Hash      String?
 
   emailMinhashSketch   String?
   addressMinhashSketch String?
@@ -135,7 +139,9 @@ model RedemptionRecord {
   @@index([shopId, protectedOfferId, phoneHash])
   @@index([shopId, protectedOfferId, emailCanonicalHash])
   @@index([shopId, protectedOfferId, addressFullHash])
+  @@index([shopId, protectedOfferId, billingAddressFullHash])
   @@index([shopId, protectedOfferId, ipHash24])
+  @@index([shopId, protectedOfferId, cardNameLast4Hash])
   @@index([shopId, protectedOfferId, createdAt])
   @@index([customerGid])
 }
