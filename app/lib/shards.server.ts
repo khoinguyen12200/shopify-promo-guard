@@ -375,7 +375,10 @@ export async function appendEntry(
   const lockKey = advisoryLockKey(creds.shopDomain);
 
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
+    // `pg_advisory_xact_lock` returns void — `$queryRaw` blows up trying to
+    // deserialize the void column, so we use `$executeRaw` which doesn't
+    // attempt to read a result set.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 
     const raw = await getShopMetafield(client, SHARD_NAMESPACE, SHARD_KEY);
     const existing = parseShard(raw, saltHex, defaultCc);

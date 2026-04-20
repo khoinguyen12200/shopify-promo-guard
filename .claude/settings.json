@@ -3,5 +3,18 @@
   "enabledPlugins": {
     "shopify-plugin@shopify-ai-toolkit": true,
     "andrej-karpathy-skills@karpathy-skills": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"additionalContext\": \"GRAPHIFY REMINDER: graphify-out/graph.json exists. Before using Grep/Glob/Read to explore the codebase, query the knowledge graph first: python3 -c \\\"import json; from pathlib import Path; data=json.loads(Path(\\\\\\\"graphify-out/graph.json\\\\\\\").read_text()); nodes=data.get(\\\\\\\"nodes\\\\\\\",[]);  print(len(nodes), \\\\\\\"nodes in graph\\\\\\\")\\\" — use /graphify query, /graphify explain, or /graphify path for structural questions. Fall back to Grep/Glob only for literal string/syntax searches.\"}}'"
+          }
+        ]
+      }
+    ]
   }
 }

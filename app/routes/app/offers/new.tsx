@@ -18,6 +18,7 @@ import {
 } from "~/lib/offer-service.server";
 import { ShopifyUserError } from "~/lib/admin-graphql.server";
 import { requireReadOnly } from "~/lib/admin-impersonation.server";
+import { enqueueColdStart } from "~/jobs/cold-start";
 import { authenticate } from "~/shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -218,6 +219,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     },
   });
+
+  // Backfill historical redemptions of this code so protection works from the
+  // first checkout after creation. The worker processes this async; if the
+  // enqueue itself fails we surface a log line but don't block the redirect —
+  // the merchant can retry backfill from the offer detail page later.
+  try {
+    await enqueueColdStart({
+      shopId: shop.id,
+      protectedOfferId: offer.id,
+    });
+  } catch (err) {
+    console.error("[offers/new] failed to enqueue cold_start", err);
+  }
 
   return redirect(`/app/offers/${offer.id}`);
 };

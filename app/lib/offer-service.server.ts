@@ -333,6 +333,44 @@ const DISCOUNT_CODE_DEACTIVATE = /* GraphQL */ `
   }
 `;
 
+const DISCOUNT_CODE_DELETE = /* GraphQL */ `
+  mutation DiscountCodeDelete($id: ID!) {
+    discountCodeDelete(id: $id) {
+      deletedCodeDiscountId
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+const DISCOUNT_CODE_RENAME_AND_ACTIVATE = /* GraphQL */ `
+  mutation DiscountCodeRenameAndActivate($id: ID!, $basicCodeDiscount: DiscountCodeBasicInput!) {
+    discountCodeBasicUpdate(id: $id, basicCodeDiscount: $basicCodeDiscount) {
+      codeDiscountNode {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+    discountCodeActivate(id: $id) {
+      codeDiscountNode {
+        id
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
 interface CodeDiscountNodeByCodeData {
   codeDiscountNodeByCode: {
     id: string;
@@ -365,6 +403,36 @@ interface DiscountCodeRenameAndDeactivateData {
 
 interface DiscountCodeDeactivateData {
   discountCodeDeactivate: {
+    codeDiscountNode: { id: string } | null;
+    userErrors: Array<{
+      field?: string[] | null;
+      message: string;
+      code?: string | null;
+    }>;
+  };
+}
+
+interface DiscountCodeDeleteData {
+  discountCodeDelete: {
+    deletedCodeDiscountId: string | null;
+    userErrors: Array<{
+      field?: string[] | null;
+      message: string;
+      code?: string | null;
+    }>;
+  };
+}
+
+interface DiscountCodeRenameAndActivateData {
+  discountCodeBasicUpdate: {
+    codeDiscountNode: { id: string } | null;
+    userErrors: Array<{
+      field?: string[] | null;
+      message: string;
+      code?: string | null;
+    }>;
+  };
+  discountCodeActivate: {
     codeDiscountNode: { id: string } | null;
     userErrors: Array<{
       field?: string[] | null;
@@ -461,6 +529,55 @@ export async function discountCodeDeactivate(
   const payload = body.data?.discountCodeDeactivate;
   if (payload?.userErrors && payload.userErrors.length > 0) {
     throw new ShopifyUserError(payload.userErrors);
+  }
+}
+
+/**
+ * Permanently remove a discount code from the shop. Used during offer delete
+ * to clean up the app-owned clone we created — deactivation alone would leave
+ * clutter in the merchant's discount list.
+ */
+export async function discountCodeDelete(
+  client: AdminGqlClient,
+  discountNodeId: string,
+): Promise<void> {
+  const body = await runGql<DiscountCodeDeleteData>(
+    client,
+    DISCOUNT_CODE_DELETE,
+    { id: discountNodeId },
+    "discountCodeDelete",
+  );
+  const payload = body.data?.discountCodeDelete;
+  if (payload?.userErrors && payload.userErrors.length > 0) {
+    throw new ShopifyUserError(payload.userErrors);
+  }
+}
+
+/**
+ * Rename a native discount back to a target code string AND activate it in one
+ * round-trip. Used when restoring a replaced discount so the merchant's
+ * original code name comes back (not the `_PG_*` archive name).
+ *
+ * Caller must ensure the target code string is free (i.e. the app-owned
+ * replacement has been deleted first) — Shopify rejects rename collisions
+ * even against deactivated discounts.
+ */
+async function renameAndActivateNativeDiscount(
+  client: AdminGqlClient,
+  discountNodeId: string,
+  restoreCode: string,
+): Promise<void> {
+  const body = await runGql<DiscountCodeRenameAndActivateData>(
+    client,
+    DISCOUNT_CODE_RENAME_AND_ACTIVATE,
+    { id: discountNodeId, basicCodeDiscount: { code: restoreCode } },
+    "discountCodeRenameAndActivate",
+  );
+  const renameErrors = body.data?.discountCodeBasicUpdate?.userErrors ?? [];
+  const activateErrors = body.data?.discountCodeActivate?.userErrors ?? [];
+  const allErrors = [...renameErrors, ...activateErrors];
+  if (allErrors.length > 0) {
+    throw new ShopifyUserError(allErrors);
   }
 }
 
@@ -643,15 +760,19 @@ export interface DeleteOfferResult {
  * RedemptionRecord / FlaggedOrder rows are preserved so history and audit
  * trails survive.
  *
- * When `restoreReplaced` is true, for every ProtectedCode that has a
- * `replacedDiscountNodeId`:
- *   1. Deactivate the app-owned replacement (`discountNodeId`) — uniqueness
- *      on the code string forces this to happen first.
- *   2. Reactivate the original via `discountCodeActivate`.
+ * For every ProtectedCode with an app-owned clone (`isAppOwned`), we delete
+ * that clone from Shopify — deactivation alone leaves clutter in the
+ * merchant's discount list.
  *
- * Best-effort: if step 1 or 2 fails for a given code, the error is re-thrown
- * so the caller can surface it; the offer is NOT archived in that case so
- * the merchant can retry.
+ * When `restoreReplaced` is true, for each code with a `replacedDiscountNodeId`:
+ *   1. Delete the app-owned replacement (frees the clean code string).
+ *   2. Rename the replaced native back to its original code AND activate it
+ *      (the `_PG_*` archive name disappears, the merchant sees their code
+ *      back exactly as it was).
+ *
+ * Best-effort: if any Shopify call fails for a given code, the error is
+ * re-thrown so the caller can surface it; the offer is NOT archived in that
+ * case so the merchant can retry.
  */
 export async function deleteOffer(
   client: AdminGqlClient,
@@ -674,25 +795,23 @@ export async function deleteOffer(
   }
 
   const restored: string[] = [];
-  if (input.restoreReplaced) {
-    for (const code of offer.codes) {
-      if (!code.replacedDiscountNodeId) continue;
-
-      // Deactivate the app-owned replacement FIRST so we don't hit
-      // code-string uniqueness when reactivating the original.
-      if (code.discountNodeId && code.isAppOwned) {
-        await discountCodeDeactivate(client, code.discountNodeId);
-      }
-      await discountCodeActivate(client, code.replacedDiscountNodeId);
-      restored.push(code.replacedDiscountNodeId);
+  for (const code of offer.codes) {
+    // Always delete the app-owned clone first. This frees the clean code
+    // string (so a rename can reuse it) and cleans up the merchant's admin.
+    if (code.discountNodeId && code.isAppOwned) {
+      await discountCodeDelete(client, code.discountNodeId);
     }
-  } else {
-    // Not restoring — still deactivate the app-owned replacements so the
-    // codes stop working entirely.
-    for (const code of offer.codes) {
-      if (code.discountNodeId && code.isAppOwned) {
-        await discountCodeDeactivate(client, code.discountNodeId);
-      }
+
+    if (input.restoreReplaced && code.replacedDiscountNodeId) {
+      // Restore: put the original code string back on the native discount
+      // and reactivate it. After this, the merchant's original is live
+      // again with its pre-protection name.
+      await renameAndActivateNativeDiscount(
+        client,
+        code.replacedDiscountNodeId,
+        code.code,
+      );
+      restored.push(code.replacedDiscountNodeId);
     }
   }
 

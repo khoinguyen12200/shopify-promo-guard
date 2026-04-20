@@ -32,18 +32,24 @@ setup: check-prereqs install db-up db-migrate functions-schema seed ## First-tim
 	@echo "✅ Setup complete. Next: run 'make dev'."
 
 .PHONY: dev
-dev: db-up ## Start all dev processes (Remix + Shopify CLI); worker in a separate terminal via `make worker`
-	@echo "Starting dev processes. Ctrl+C to stop."
+dev: db-up ## Start Remix + Shopify CLI + background job worker. Ctrl+C stops all.
+	@echo "Starting dev processes (app + worker). Ctrl+C to stop everything."
 	@# `shopify app dev` runs the Remix app + extension watchers + a
 	@# cloudflared tunnel (needed so Shopify can POST webhooks to your
 	@# laptop). cloudflared must be on PATH — install via:
 	@#   brew install cloudflared
 	@# To override with a different tunnel (e.g. ngrok):
 	@#   TUNNEL_URL=https://…  make dev
-	shopify app dev $(if $(TUNNEL_URL),--tunnel-url $(TUNNEL_URL))
+	@# The worker polls the Job table so webhooks, cold-start backfills,
+	@# and shard appends actually run. Without it, jobs queue up and no
+	@# signals get collected. `make worker` still works if you want to
+	@# run it in its own terminal.
+	@npm run worker & WORKER_PID=$$!; \
+	 trap 'kill $$WORKER_PID 2>/dev/null; wait 2>/dev/null' INT TERM EXIT; \
+	 shopify app dev $(if $(TUNNEL_URL),--tunnel-url $(TUNNEL_URL))
 
 .PHONY: worker
-worker: ## Run the background job worker (separate terminal from `make dev`)
+worker: ## Run only the background job worker (alternative to bundled `make dev`)
 	npm run worker
 
 .PHONY: build

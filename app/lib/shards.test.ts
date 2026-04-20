@@ -22,8 +22,13 @@ vi.mock("./admin-graphql.server.js", async () => {
 });
 
 const transactionMock = vi.fn(async (cb: (tx: unknown) => unknown) => {
-  // Provide a tx with a $queryRaw spy so the advisory lock call works.
-  const tx = { $queryRaw: vi.fn(async () => []) };
+  // Provide a tx with spies for both raw helpers; production uses $executeRaw
+  // for the advisory lock (pg_advisory_xact_lock returns void, so $queryRaw
+  // would fail with "Failed to deserialize column of type 'void'").
+  const tx = {
+    $queryRaw: vi.fn(async () => []),
+    $executeRaw: vi.fn(async () => 0),
+  };
   return cb(tx);
 });
 

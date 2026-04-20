@@ -601,7 +601,7 @@ describe("deleteOffer", () => {
     }));
   }
 
-  it("restore path: deactivates replacement BEFORE activating the original", async () => {
+  it("restore path: deletes replacement BEFORE renaming+activating the original with the clean code", async () => {
     loadOffer([
       {
         id: "code-1",
@@ -614,29 +614,43 @@ describe("deleteOffer", () => {
     ]);
 
     const order: string[] = [];
-    const client = vi.fn(async (query: string) => {
-      if (query.includes("discountCodeDeactivate")) order.push("deactivate");
-      if (query.includes("discountCodeActivate")) order.push("activate");
-      return {
-        status: 200,
-        headers: new Headers(),
-        json: async () => ({
-          data: query.includes("discountCodeDeactivate")
-            ? {
-                discountCodeDeactivate: {
-                  codeDiscountNode: { id: "x" },
-                  userErrors: [],
+    let renameVars: Record<string, unknown> | null = null;
+    const client = vi.fn(
+      async (query: string, opts?: { variables: Record<string, unknown> }) => {
+        if (query.includes("DiscountCodeDelete")) order.push("delete");
+        if (query.includes("DiscountCodeRenameAndActivate")) {
+          order.push("rename+activate");
+          renameVars = opts?.variables ?? null;
+        }
+        return {
+          status: 200,
+          headers: new Headers(),
+          json: async () =>
+            query.includes("DiscountCodeDelete")
+              ? {
+                  data: {
+                    discountCodeDelete: {
+                      deletedCodeDiscountId:
+                        "gid://shopify/DiscountNode/new",
+                      userErrors: [],
+                    },
+                  },
+                }
+              : {
+                  data: {
+                    discountCodeBasicUpdate: {
+                      codeDiscountNode: { id: "old" },
+                      userErrors: [],
+                    },
+                    discountCodeActivate: {
+                      codeDiscountNode: { id: "old" },
+                      userErrors: [],
+                    },
+                  },
                 },
-              }
-            : {
-                discountCodeActivate: {
-                  codeDiscountNode: { id: "y" },
-                  userErrors: [],
-                },
-              },
-        }),
-      };
-    }) as unknown as AdminGqlClient;
+        };
+      },
+    ) as unknown as AdminGqlClient;
 
     const result = await deleteOffer(client, {
       offerId: "offer-1",
@@ -647,13 +661,18 @@ describe("deleteOffer", () => {
     expect(result.restoredDiscountNodeIds).toEqual([
       "gid://shopify/DiscountNode/old",
     ]);
-    expect(order).toEqual(["deactivate", "activate"]);
+    expect(order).toEqual(["delete", "rename+activate"]);
+    // Rename must target the pre-protection clean code, not the archive name.
+    expect(renameVars).toMatchObject({
+      id: "gid://shopify/DiscountNode/old",
+      basicCodeDiscount: { code: "WELCOME10" },
+    });
     // Soft-delete happened: codes archived + offer archived in a transaction.
     expect(codeUpdateManyMock).toHaveBeenCalledTimes(1);
     expect(updateMock).toHaveBeenCalledTimes(1);
   });
 
-  it("delete path: deactivates replacement, does NOT touch original", async () => {
+  it("delete path: deletes the app-owned clone, does NOT touch the replaced original", async () => {
     loadOffer([
       {
         id: "code-1",
@@ -667,15 +686,16 @@ describe("deleteOffer", () => {
 
     const order: string[] = [];
     const client = vi.fn(async (query: string) => {
-      if (query.includes("discountCodeDeactivate")) order.push("deactivate");
-      if (query.includes("discountCodeActivate")) order.push("activate");
+      if (query.includes("DiscountCodeDelete")) order.push("delete");
+      if (query.includes("DiscountCodeRenameAndActivate"))
+        order.push("rename+activate");
       return {
         status: 200,
         headers: new Headers(),
         json: async () => ({
           data: {
-            discountCodeDeactivate: {
-              codeDiscountNode: { id: "x" },
+            discountCodeDelete: {
+              deletedCodeDiscountId: "gid://shopify/DiscountNode/new",
               userErrors: [],
             },
           },
@@ -690,7 +710,7 @@ describe("deleteOffer", () => {
     });
 
     expect(result.restoredDiscountNodeIds).toEqual([]);
-    expect(order).toEqual(["deactivate"]);
+    expect(order).toEqual(["delete"]);
   });
 
   it("throws when the offer doesn't exist for this shop", async () => {
