@@ -452,7 +452,6 @@ describe("scorePostOrder", () => {
         addressFullHash: billingHash, // stored in shipping slot on prior order
         billingAddressFullHash: null,
         ipHash24: null,
-        cardNameLast4Hash: null,
         emailMinhashSketch: null,
         addressMinhashSketch: null,
       },
@@ -498,7 +497,6 @@ describe("scorePostOrder", () => {
         addressFullHash: "deadbeef", // different shipping on prior order
         billingAddressFullHash: shippingHash, // prior billing = our shipping
         ipHash24: null,
-        cardNameLast4Hash: null,
         emailMinhashSketch: null,
         addressMinhashSketch: null,
       },
@@ -517,38 +515,5 @@ describe("scorePostOrder", () => {
     expect(result.score).toBe(10);
     expect(result.decision).toBe("block");
     expect(result.matchedSignals).toContain("address_full");
-  });
-
-  // -------------------------------------------------------------------------
-  // Case 15 — Card name+last4 exact match at weight 8 (→ review)
-  // -------------------------------------------------------------------------
-  it("scores card_name_last4 at weight 8 (→ review)", async () => {
-    const probe = await scorePostOrder(
-      baseInput({ signals: { cardNameLast4: "jane doe:4242" } }),
-    );
-    const cardHash = probe.hashes["card_name_last4"];
-    expect(cardHash).toBeDefined();
-
-    mockFindMany.mockResolvedValue([
-      {
-        id: "rec_1",
-        phoneHash: null,
-        emailCanonicalHash: null,
-        addressFullHash: null,
-        billingAddressFullHash: null,
-        ipHash24: null,
-        cardNameLast4Hash: cardHash,
-        emailMinhashSketch: null,
-        addressMinhashSketch: null,
-      },
-    ]);
-
-    const result = await scorePostOrder(
-      baseInput({ signals: { cardNameLast4: "jane doe:4242" } }),
-    );
-
-    expect(result.score).toBe(8);
-    expect(result.decision).toBe("review");
-    expect(result.matchedSignals).toContain("card_name_last4");
   });
 });

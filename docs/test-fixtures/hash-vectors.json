@@ -16,7 +16,6 @@
     {"tag": "phone", "value_utf8": "+14155550123", "hex": "671d3dc5"},
     {"tag": "addr_full", "value_utf8": "1 main st 94102 us", "hex": "bf07fb4a"},
     {"tag": "ip_v4_24", "value_utf8": "192.168.1", "hex": "c7f67cb3"},
-    {"tag": "ip_v6_48", "value_utf8": "2402:800:63a2", "hex": "b8d00759"},
-    {"tag": "card_name_last4", "value_utf8": "jane doe:4242", "hex": "a0dbf703"}
+    {"tag": "ip_v6_48", "value_utf8": "2402:800:63a2", "hex": "b8d00759"}
   ]
 }

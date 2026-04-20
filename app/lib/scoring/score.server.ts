@@ -36,8 +36,6 @@ export interface OrderSignals {
   billingAddressZip?: string;
   billingAddressCountry?: string;
   ip?: string;
-  /** Normalized `name:last4` key — see normalize/card.server.ts. */
-  cardNameLast4?: string;
   deviceFingerprint?: string;
 }
 
@@ -183,13 +181,6 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
     }
   }
 
-  // Card name + last4 — §4.9 exact-match signal.
-  if (signals.cardNameLast4) {
-    const h = lookupHash("card_name_last4", signals.cardNameLast4, salt);
-    hashes["card_name_last4"] = h;
-    orClauses.push({ cardNameLast4Hash: h });
-  }
-
   // Device fingerprint (stored as hash for future use, no DB column yet)
   if (signals.deviceFingerprint) {
     const h = lookupHash("device", signals.deviceFingerprint, salt);
@@ -206,7 +197,6 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
     addressFullHash: string | null;
     billingAddressFullHash: string | null;
     ipHash24: string | null;
-    cardNameLast4Hash: string | null;
     emailMinhashSketch: string | null;
     addressMinhashSketch: string | null;
   }[] = [];
@@ -224,7 +214,6 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
         addressFullHash: true,
         billingAddressFullHash: true,
         ipHash24: true,
-        cardNameLast4Hash: true,
         emailMinhashSketch: true,
         addressMinhashSketch: true,
       },
@@ -245,7 +234,6 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
         addressFullHash: true,
         billingAddressFullHash: true,
         ipHash24: true,
-        cardNameLast4Hash: true,
         emailMinhashSketch: true,
         addressMinhashSketch: true,
       },
@@ -370,15 +358,6 @@ export async function scorePostOrder(input: ScoreInput): Promise<ScoreResult> {
     ) {
       s += WEIGHTS.ip_v6_48;
       facts.push("ip_v6_48");
-    }
-
-    // Rule 4.9 — Card name + last4 (exact match).
-    if (
-      hashes["card_name_last4"] &&
-      record.cardNameLast4Hash === hashes["card_name_last4"]
-    ) {
-      s += WEIGHTS.card_name_last4;
-      facts.push("card_name_last4");
     }
 
     if (s > best.score) {

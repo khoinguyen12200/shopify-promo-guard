@@ -1,19 +1,16 @@
 /**
- * One-shot backfill for two post-IPv6-fix signals:
+ * One-shot backfill for the `billingAddress*` columns on RedemptionRecord.
+ * Rows written before the billing-address second-slot landed captured
+ * shipping-or-billing into the single `addressCiphertext` — this script
+ * re-queries each order via Admin GraphQL, and if billing differs from
+ * shipping, encrypts + hashes the billing side into the new columns.
  *
- *   1. `billingAddress*` columns (new second address slot — classic gap
- *      where we hashed shipping-or-billing but not both)
- *   2. `cardNameLast4*` columns (new signal, requires Admin GraphQL to fetch
- *      the cardholder name which isn't on the webhook payload)
- *
- * For each RedemptionRecord missing either column set, we re-query the order
- * by GID via Admin GraphQL, extract the fields, and write them in place. The
- * primary `addressCiphertext` / `addressFullHash` are left alone — we only
- * fill in the NEW columns.
+ * Rows where shipping == billing stay untouched (nothing meaningful to
+ * backfill).
  *
  * Usage:
- *   npx tsx scripts/backfill-billing-and-card.ts          # all shops
- *   npx tsx scripts/backfill-billing-and-card.ts --dry    # report only
+ *   npx tsx scripts/backfill-billing.ts          # all shops
+ *   npx tsx scripts/backfill-billing.ts --dry    # report only
  */
 
 import "dotenv/config";
@@ -22,13 +19,12 @@ import prisma from "../app/db.server.js";
 import { encrypt, loadKek, unwrapDek } from "../app/lib/crypto.server.js";
 import { hashForLookup, hashToHex } from "../app/lib/hash.server.js";
 import { fullKey } from "../app/lib/normalize/address.server.js";
-import { normalizeCardNameLast4 } from "../app/lib/normalize/card.server.js";
 import { unauthenticated } from "../app/shopify.server.js";
 
 const DRY_RUN = process.argv.includes("--dry");
 
 const ORDER_BACKFILL_QUERY = /* GraphQL */ `
-  query OrderBackfill($id: ID!) {
+  query OrderBillingBackfill($id: ID!) {
     order(id: $id) {
       shippingAddress {
         address1
@@ -42,16 +38,6 @@ const ORDER_BACKFILL_QUERY = /* GraphQL */ `
         zip
         countryCodeV2
       }
-      transactions(first: 5) {
-        kind
-        status
-        paymentDetails {
-          ... on CardPaymentDetails {
-            name
-            number
-          }
-        }
-      }
     }
   }
 `;
@@ -63,17 +49,10 @@ interface OrderAddress {
   countryCodeV2?: string | null;
 }
 
-interface CardTxn {
-  kind?: string | null;
-  status?: string | null;
-  paymentDetails?: { name?: string | null; number?: string | null } | null;
-}
-
 interface OrderBackfillData {
   order: {
     shippingAddress: OrderAddress | null;
     billingAddress: OrderAddress | null;
-    transactions: CardTxn[] | null;
   } | null;
 }
 
@@ -93,21 +72,6 @@ function toAddrFullKey(addr: OrderAddress | null): string | null {
     zip: addr.zip ?? "",
     countryCode: addr.countryCodeV2 ?? "",
   });
-}
-
-function pickCardNameLast4(txns: CardTxn[] | null): string | null {
-  for (const t of txns ?? []) {
-    const status = (t.status ?? "").toUpperCase();
-    if (status && status !== "SUCCESS") continue;
-    const card = t.paymentDetails;
-    if (!card) continue;
-    const digits = (card.number ?? "").match(/\d/g) ?? [];
-    if (digits.length < 4) continue;
-    const last4 = digits.slice(-4).join("");
-    const key = normalizeCardNameLast4(card.name ?? "", last4);
-    if (key) return key;
-  }
-  return null;
 }
 
 async function fetchOrder(
@@ -135,35 +99,29 @@ async function backfillShop(shop: {
   shopDomain: string;
   salt: string;
   encryptionKey: string;
-}): Promise<{ scanned: number; billing: number; card: number; skipped: number }> {
+}): Promise<{ scanned: number; billing: number; skipped: number }> {
   const kek = loadKek();
   const dek = unwrapDek(shop.encryptionKey, kek);
   const salt = hexBytes(shop.salt);
 
   let scanned = 0;
   let billing = 0;
-  let card = 0;
   let skipped = 0;
 
   try {
     const rows = await prisma.redemptionRecord.findMany({
       where: {
         shopId: shop.id,
-        OR: [
-          { billingAddressCiphertext: null },
-          { cardNameLast4Ciphertext: null },
-        ],
+        billingAddressCiphertext: null,
       },
       select: {
         id: true,
         orderGid: true,
-        addressFullHash: true,
         billingAddressCiphertext: true,
-        cardNameLast4Ciphertext: true,
       },
     });
 
-    if (rows.length === 0) return { scanned, billing, card, skipped };
+    if (rows.length === 0) return { scanned, billing, skipped };
 
     let admin: Awaited<ReturnType<typeof unauthenticated.admin>>["admin"];
     try {
@@ -175,7 +133,7 @@ async function backfillShop(shop: {
           err instanceof Error ? err.message : String(err)
         })`,
       );
-      return { scanned, billing, card, skipped: scanned + rows.length };
+      return { scanned, billing, skipped: rows.length };
     }
 
     for (const row of rows) {
@@ -203,53 +161,31 @@ async function backfillShop(shop: {
       const billKey = toAddrFullKey(order.billingAddress);
       const billingDiffers =
         billKey != null && shipKey != null && billKey !== shipKey;
+      if (!billingDiffers) continue;
 
-      const data: Record<string, string | null> = {};
+      const hBill = hashToHex(
+        hashForLookup("addr_full", new TextEncoder().encode(billKey), salt),
+      );
 
-      if (!row.billingAddressCiphertext && billingDiffers) {
-        const hBill = hashToHex(
-          hashForLookup(
-            "addr_full",
-            new TextEncoder().encode(billKey),
-            salt,
-          ),
-        );
-        data.billingAddressCiphertext = encrypt(
-          JSON.stringify(order.billingAddress),
-          dek,
-        );
-        data.billingAddressFullHash = hBill;
-        billing++;
-      }
-
-      if (!row.cardNameLast4Ciphertext) {
-        const cardKey = pickCardNameLast4(order.transactions);
-        if (cardKey) {
-          const hCard = hashToHex(
-            hashForLookup(
-              "card_name_last4",
-              new TextEncoder().encode(cardKey),
-              salt,
-            ),
-          );
-          data.cardNameLast4Ciphertext = encrypt(cardKey, dek);
-          data.cardNameLast4Hash = hCard;
-          card++;
-        }
-      }
-
-      if (Object.keys(data).length > 0 && !DRY_RUN) {
+      if (!DRY_RUN) {
         await prisma.redemptionRecord.update({
           where: { id: row.id },
-          data,
+          data: {
+            billingAddressCiphertext: encrypt(
+              JSON.stringify(order.billingAddress),
+              dek,
+            ),
+            billingAddressFullHash: hBill,
+          },
         });
       }
+      billing++;
     }
   } finally {
     dek.fill(0);
   }
 
-  return { scanned, billing, card, skipped };
+  return { scanned, billing, skipped };
 }
 
 async function main(): Promise<void> {
@@ -261,24 +197,22 @@ async function main(): Promise<void> {
 
   let scanned = 0;
   let billing = 0;
-  let card = 0;
   let skipped = 0;
 
   for (const shop of shops) {
     const r = await backfillShop(shop);
     scanned += r.scanned;
     billing += r.billing;
-    card += r.card;
     skipped += r.skipped;
     if (r.scanned > 0) {
       console.log(
-        `${tag} ${shop.shopDomain}: scanned=${r.scanned} billing=${r.billing} card=${r.card} skipped=${r.skipped}`,
+        `${tag} ${shop.shopDomain}: scanned=${r.scanned} billing=${r.billing} skipped=${r.skipped}`,
       );
     }
   }
 
   console.log(
-    `${tag} done. total scanned=${scanned} billing=${billing} card=${card} skipped=${skipped}`,
+    `${tag} done. total scanned=${scanned} billing=${billing} skipped=${skipped}`,
   );
 }
 

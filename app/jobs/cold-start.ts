@@ -145,23 +145,6 @@ const ORDERS_BY_DISCOUNT_CODE = /* GraphQL */ `
             zip
             countryCodeV2
           }
-          # Card name+last4 signal is gated behind Shopify's Protected
-          # Customer Data approval (separate from read_orders scope). Until
-          # that approval is granted, querying the name field causes the
-          # entire orders() response to error with ACCESS_DENIED. The
-          # column + scoring rule stay in place so we can flip this on
-          # later by restoring the transactions sub-selection below.
-          #
-          # transactions(first: 5) {
-          #   kind
-          #   status
-          #   paymentDetails {
-          #     ... on CardPaymentDetails {
-          #       name
-          #       number
-          #     }
-          #   }
-          # }
         }
       }
     }
@@ -176,17 +159,6 @@ interface OrderAddress {
   countryCodeV2?: string | null;
 }
 
-interface CardDetails {
-  name?: string | null;
-  number?: string | null;
-}
-
-interface OrderTransaction {
-  kind?: string | null;
-  status?: string | null;
-  paymentDetails?: CardDetails | null;
-}
-
 interface OrderNode {
   id: string;
   name?: string | null;
@@ -197,7 +169,6 @@ interface OrderNode {
   discountCodes?: string[] | null;
   shippingAddress?: OrderAddress | null;
   billingAddress?: OrderAddress | null;
-  transactions?: OrderTransaction[] | null;
 }
 
 interface OrdersQueryData {
@@ -320,8 +291,6 @@ interface BackfillSignals {
   /** Billing address when distinct from shipping; null otherwise. */
   billingAddr: OrderAddress | null;
   ip: string | null;
-  /** Normalized `name:last4` key; null when no usable card transaction. */
-  cardNameLast4: string | null;
   emailSketch?: number[];
   addressSketch?: number[];
 }
@@ -379,9 +348,6 @@ function extractSignals(
     hashes[ipPrefix.tag] = lookupHex(ipPrefix.tag, ipPrefix.key, salt);
   }
 
-  // Disabled: see cold-start GraphQL query comment re: Protected Customer Data.
-  const cardNameLast4: string | null = null;
-
   const emailSketch = canonEmail
     ? computeSketch(
         emailTrigrams(canonEmail).map((t) => new TextDecoder().decode(t)),
@@ -404,7 +370,6 @@ function extractSignals(
     addr,
     billingAddr,
     ip,
-    cardNameLast4,
     emailSketch,
     addressSketch,
   };
@@ -461,9 +426,6 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
         ? encrypt(JSON.stringify(sig.billingAddr), dek)
         : null,
       ipCiphertext: sig.ip ? encrypt(sig.ip, dek) : null,
-      cardNameLast4Ciphertext: sig.cardNameLast4
-        ? encrypt(sig.cardNameLast4, dek)
-        : null,
 
       phoneHash: sig.hashes["phone"] ?? null,
       emailCanonicalHash: sig.hashes["email_canonical"] ?? null,
@@ -471,7 +433,6 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
       billingAddressFullHash: sig.hashes["billing_address_full"] ?? null,
       ipHash24:
         sig.hashes["ip_v4_24"] ?? sig.hashes["ip_v6_48"] ?? null,
-      cardNameLast4Hash: sig.hashes["card_name_last4"] ?? null,
 
       emailMinhashSketch: sig.emailSketch
         ? JSON.stringify(sig.emailSketch)

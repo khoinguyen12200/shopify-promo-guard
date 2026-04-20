@@ -82,7 +82,6 @@ interface RehashResult {
   addressFullHash: string | null;
   billingAddressFullHash: string | null;
   ipHash24: string | null;
-  cardNameLast4Hash: string | null;
   emailMinhashSketch: string | null;
   addressMinhashSketch: string | null;
   entry: ShardEntry;
@@ -125,7 +124,6 @@ function rehashOne(
     dek,
   );
   const ipPlain = tryDecryptUtf8(record.ipCiphertext, dek);
-  const cardPlain = tryDecryptUtf8(record.cardNameLast4Ciphertext, dek);
 
   const canonEmail = emailPlain ? canonicalEmail(emailPlain) : null;
   const canonPhone = phonePlain ? canonicalPhone(phonePlain, null) : null;
@@ -164,9 +162,6 @@ function rehashOne(
     : "";
   const ipHash24 = ipPrefix
     ? hashOrEmpty(ipPrefix.tag, ipPrefix.key, salt)
-    : "";
-  const cardNameLast4Hash = cardPlain
-    ? hashOrEmpty("card_name_last4", cardPlain, salt)
     : "";
 
   const emailSketchArr = canonEmail
@@ -207,7 +202,6 @@ function rehashOne(
     addressFullHash: addressFullHash || null,
     billingAddressFullHash: billingAddressFullHash || null,
     ipHash24: ipHash24 || null,
-    cardNameLast4Hash: cardNameLast4Hash || null,
     emailMinhashSketch: emailSketchArr ? JSON.stringify(emailSketchArr) : null,
     addressMinhashSketch: addrSketchArr ? JSON.stringify(addrSketchArr) : null,
     entry,
@@ -248,7 +242,6 @@ export const handleRotateSalt: JobHandler<unknown> = async (payload, ctx) => {
           addressFullHash: res.addressFullHash,
           billingAddressFullHash: res.billingAddressFullHash,
           ipHash24: res.ipHash24,
-          cardNameLast4Hash: res.cardNameLast4Hash,
           emailMinhashSketch: res.emailMinhashSketch,
           addressMinhashSketch: res.addressMinhashSketch,
         },

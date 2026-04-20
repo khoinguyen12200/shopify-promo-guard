@@ -115,21 +115,6 @@ function orderGid(o: OrderJson): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Card name + last4 fetch — disabled until Shopify grants Protected
-// Customer Data approval on the CardPaymentDetails.name field. Until then,
-// querying that field causes ACCESS_DENIED. The scoring rule + DB column
-// remain in place so we can flip this back on by restoring the fetch +
-// the transactions sub-selection in cold-start's GraphQL query.
-// ---------------------------------------------------------------------------
-
-async function fetchOrderCardNameLast4(
-  _graphql: unknown,
-  _orderId: string,
-): Promise<string | null> {
-  return null;
-}
-
-// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -282,9 +267,6 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
     billingAddrRaw != null && billingFullKeyStr !== fullKeyStr;
   const billingAddrForStorage = billingDiffers ? billingAddrRaw : null;
 
-  // Card: requires an Admin GraphQL round-trip — webhook payload has no name.
-  const cardNameLast4 = await fetchOrderCardNameLast4(adminClient.graphql, oid);
-
   // ---- Score (also computes hashes we'll persist) -----------------------
   const scoreResult = await scorePostOrder({
     shopSalt: shop.salt,
@@ -309,7 +291,6 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
         ? (billingAddrRaw?.country_code ?? "")
         : undefined,
       ip,
-      cardNameLast4: cardNameLast4 ?? undefined,
     },
     emailSketch,
     addressSketch,
@@ -334,16 +315,12 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
         ? encrypt(JSON.stringify(billingAddrForStorage), dek)
         : null,
       ipCiphertext: ip ? encrypt(ip, dek) : null,
-      cardNameLast4Ciphertext: cardNameLast4
-        ? encrypt(cardNameLast4, dek)
-        : null,
 
       phoneHash: hashes["phone"] ?? null,
       emailCanonicalHash: hashes["email_canonical"] ?? null,
       addressFullHash: hashes["address_full"] ?? null,
       billingAddressFullHash: hashes["billing_address_full"] ?? null,
       ipHash24: hashes["ip_v4_24"] ?? hashes["ip_v6_48"] ?? null,
-      cardNameLast4Hash: hashes["card_name_last4"] ?? null,
 
       emailMinhashSketch: emailSketch ? JSON.stringify(emailSketch) : null,
       addressMinhashSketch: addressSketch
