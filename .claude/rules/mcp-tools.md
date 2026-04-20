@@ -1,21 +1,24 @@
 # MCP Tool Usage Rules
 
-## code-review-graph — use FIRST for any code exploration
+## graphify — use FIRST for any code exploration
 
-Before using Grep, Glob, or Read to explore the codebase, always try the
-knowledge graph first. It is faster and gives structural context (callers,
-dependents, impact radius) that file scanning cannot.
+Before using Grep/Glob/Read to explore the codebase, try the graphify
+knowledge graph first. It's faster and gives structural context (callers,
+communities, cross-community bridges) that file scanning cannot.
 
-| Task | Tool to use first |
+Graph artifacts live in `graphify-out/` (gitignored). Rebuild with
+`/graphify .` or `/graphify . --update` (incremental).
+
+| Task | Command |
 |---|---|
-| Find where a function is used | `query_graph` with `callers_of` |
-| Understand what a file depends on | `query_graph` with `imports_of` |
-| Find tests for a module | `query_graph` with `tests_for` |
-| Search by keyword or concept | `semantic_search_nodes` |
-| Assess blast radius of a change | `get_impact_radius` |
-| Review changed files | `detect_changes` + `get_review_context` |
+| Find what connects two concepts | `/graphify path "NodeA" "NodeB"` |
+| Explain a node and its neighbors | `/graphify explain "NodeName"` |
+| Open-ended question over the graph | `/graphify query "how does X work"` |
+| Rebuild after code changes | `/graphify . --update` |
+| Full rebuild | `/graphify .` |
 
-Fall back to Grep/Glob/Read only when the graph returns no useful results.
+Fall back to Grep/Glob/Read only when the graph returns nothing useful
+or the question is about literal file contents (imports, strings, syntax).
 
 ## Shopify dev MCP — use BEFORE any admin UI changes
 

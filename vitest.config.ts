@@ -1,7 +1,4 @@
 /**
- * See: CLAUDE.md § Commands (make verify runs Vitest)
- * Related: docs/build-orchestration-spec.md
- *
  * Base Vitest config — Node environment, loads .env via setup file,
  * only picks up *.test.ts beside the code it exercises.
  */

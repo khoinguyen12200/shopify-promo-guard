@@ -1,5 +1,4 @@
 # Promo Guard — one-command orchestrator
-# See docs/build-orchestration-spec.md for the design.
 
 SHELL := /bin/bash
 

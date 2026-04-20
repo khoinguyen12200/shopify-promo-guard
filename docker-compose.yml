@@ -1,6 +1,3 @@
-# See: docs/build-orchestration-spec.md §3 (make setup / db-up)
-# Related: CLAUDE.md § Infrastructure (local dev DB, port 5434)
-#
 # Local Postgres 16 for Promo Guard dev. Port 5434 chosen to avoid
 # clashing with any system Postgres (5432) or other Shopify projects
 # (repair-ops uses 5433).

@@ -1,7 +1,5 @@
 //! Promo Guard shared library — single source of truth for normalize + hash + scoring.
-//!
-//! See: docs/build-orchestration-spec.md §5
-//! Related: docs/normalization-spec.md §11 (versioning)
+//! Versioning: see docs/normalization-spec.md §11
 
 #![forbid(unsafe_code)]
 

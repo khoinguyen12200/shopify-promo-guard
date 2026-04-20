@@ -1,18 +1,6 @@
 # Promo Guard
 
-Prevent repeat abuse of Shopify welcome offers by matching identity signals beyond email (phone, address, device/IP, similar email variants). Works on Basic / Shopify / Advanced plans — no Plus required, Starter excluded.
-
-## Session ritual
-
-1. Skim this file (you're here).
-2. Open `docs/build-plan.md`. Find the next unchecked task.
-3. Read only the spec sections that task references. Don't load everything.
-4. Work on that one task. One task, one session, one commit.
-5. Before committing: `make verify` must pass.
-6. Mark the task checkbox done in `docs/build-plan.md`, commit with message `Txx: <task title>`.
-7. Stop — unless the user queues the next task.
-
-If a task reveals a spec is wrong, fix the spec in the same commit and note it in the body.
+Prevent repeat abuse of Shopify welcome offers by matching identity signals beyond email (phone, address, device/IP, similar email variants). Basic / Shopify / Advanced plans — no Plus, no Starter.
 
 ## Hard rules
 
@@ -20,224 +8,38 @@ If a task reveals a spec is wrong, fix the spec in the same commit and note it i
 - NEVER change normalization without bumping the version in `docs/normalization-spec.md §11` AND rebuilding `docs/test-fixtures/hash-vectors.json`.
 - NEVER add a merchant-facing setting that isn't already in `docs/admin-ui-spec.md`.
 - NEVER use the `orders/create` webhook. Use `orders/paid`.
-- NEVER exceed 30 query cost or 128 KB input in a Function (limits from `docs/function-queries-spec.md §1`).
+- NEVER exceed 30 query cost or 128 KB input in a Function (see `docs/function-queries-spec.md §1`).
 - NEVER store a protected discount's raw code in logs. Hash or redact.
-- NEVER log decrypted PII. Decryption happens only in-memory in one function, then drops scope.
-- ALWAYS run `make verify` before committing. A failing `make verify` on `main` is a stop-the-line event.
+- NEVER log decrypted PII. Decryption is in-memory only, scoped narrowly.
+- ALWAYS run `make verify` before committing.
 
-## CLI-first rule
+## CLI-first
 
-When a CLI can scaffold or modify a file, USE the CLI. Never hand-write what a tool generates — it's a source of bugs and version drift.
-
-| Doing this | Use this |
-|---|---|
-| Scaffolding a Function extension | `shopify app generate extension --template <kind> --flavor rust --name <name>` |
-| Scaffolding a UI extension | `shopify app generate extension --template ui_extension` |
-| Scaffolding a webhook or admin UI extension | `shopify app generate extension --template admin_action` etc. |
-| Downloading a Function schema | `shopify app function schema --stdout > schema.graphql` |
-| Creating/changing Prisma models | edit `prisma/schema.prisma` then `npx prisma migrate dev --name <slug>` |
-| Generating the Prisma client | `npx prisma generate` |
-| Running a Function locally | `shopify app function run --input=<file> --export=<name>` |
-| Installing a Node dep | `npm install <pkg>` (never hand-edit `package.json` deps) |
-| Installing a Rust dep | `cargo add <pkg>` in the crate's directory (if allowed; Function crates have tight restrictions) |
-| Creating a new Remix route | touch a file at the conventional path — no CLI needed, but follow the route-name conventions in `docs/admin-ui-spec.md` |
-
-If a CLI command is interactive (prompts for input), stop and ask the user to run it themselves — do not try to guess answers.
+If a CLI scaffolds it, use the CLI — never hand-write what a tool generates. Shopify app scaffolds, Prisma migrations, `npm install`, `cargo add` — all via CLI. If a CLI prompts for input interactively, stop and ask the user to run it themselves. Details: `.claude/rules/shopify-functions.md`.
 
 ## Spec index
 
 | Question | Doc |
 |---|---|
-| High-level architecture | `docs/system-design.md` |
-| Database schema + compliance flows | `docs/database-design.md` |
-| Email/phone/address normalization + MinHash | `docs/normalization-spec.md` |
-| Scoring weights + decision thresholds | `docs/scoring-spec.md` |
-| Function GraphQL queries + output shapes | `docs/function-queries-spec.md` |
-| Webhook handlers + job queue | `docs/webhook-spec.md` |
-| Merchant-facing UI (inside Shopify embed) | `docs/admin-ui-spec.md` |
+| Architecture | `docs/system-design.md` |
+| DB schema + compliance | `docs/database-design.md` |
+| Normalization + MinHash | `docs/normalization-spec.md` |
+| Scoring + thresholds | `docs/scoring-spec.md` |
+| Function queries + output | `docs/function-queries-spec.md` |
+| Webhooks + job queue | `docs/webhook-spec.md` |
+| Merchant admin UI | `docs/admin-ui-spec.md` + `docs/polaris-standards.md` |
 | Public marketing site | `docs/landing-page-spec.md` |
-| Internal team admin tool | `docs/platform-admin-spec.md` |
-| Build/wire/context strategy | `docs/build-orchestration-spec.md` |
+| Internal admin tool | `docs/platform-admin-spec.md` |
+| Scheduled jobs | `docs/cron-setup.md` |
 
-## Infrastructure
+## AI must NOT
 
-- **Local dev DB**: Postgres 16 via `docker-compose.yml` (port 5434).
-- **Production DB**: Neon Postgres. `DATABASE_URL` (pooled) + `DIRECT_DATABASE_URL` (unpooled, for migrations).
-- **Hosting**: GCP Cloud Run, pattern mirrors `~/Projects/shopify-repair-ops`:
-  - Artifact Registry for container images
-  - Cloud Build pipeline (`cloudbuild.yaml`): build → migrate → push → deploy
-  - Separate `Dockerfile.dev` and `Dockerfile.prod`
-  - Regions: `us-central1`
-- **Secrets**: GCP Secret Manager for Neon URLs, Shopify API secret, app KEK, magic-link secret.
-- **Background worker**: Cloud Run Job (scheduled or triggered) OR a second Cloud Run service — decide at T54.
-
-## Commands
-
-```bash
-make setup       # first-time init: deps, DB up, migrate, schemas, seed
-make dev         # start all dev processes (Remix + Shopify CLI + worker + db)
-make build       # production artifacts (Remix bundle, Function wasm binaries)
-make test        # all tests: Node (Vitest), Rust (cargo test), fixture parity
-make verify      # lint + typecheck + test (what CI runs)
-make clean       # remove generated artifacts, stop docker
-```
-
-More targets in `Makefile` (db-reset, db-studio, functions-schema, etc.).
-
-## Key paths
-
-```
-app/                                Remix app (embedded, public, platform admin)
-app/routes/app.*.tsx                merchant UI (embedded in Shopify)
-app/routes/_public.*.tsx            public marketing site
-app/routes/admin.*.tsx              internal platform admin
-app/routes/webhooks.*.tsx           Shopify webhook receivers
-app/lib/                            Node services (normalize, hash, scoring, crypto)
-app/jobs/                           background job handlers
-app/workers/worker.ts               job queue runner entrypoint
-prisma/schema.prisma                DB schema — source of truth is docs/database-design.md
-shared-rust/                        single source of truth for Rust normalize/hash/scoring
-extensions/promo-guard-validator/   Cart & Checkout Validation Function (Rust)
-extensions/promo-guard-discount/    Discount Function (Rust)
-extensions/promo-guard-order-block/ Admin UI extension — order details block
-docs/                               all specs (see index above)
-docs/test-fixtures/                 JSON fixtures that enforce Node/Rust parity
-scripts/                            dev scripts (seed, migrate-helpers, etc.)
-docker-compose.yml                  local Postgres
-Dockerfile.dev / Dockerfile.prod    GCP Cloud Run images
-cloudbuild.yaml                     GCP deploy pipeline
-Makefile                            one-command orchestrator
-```
-
-## File-header convention
-
-Every new source file starts with a comment linking to its spec:
-
-```typescript
-/**
- * See: docs/webhook-spec.md §5 (orders/paid handler)
- * Related: docs/scoring-spec.md §5.2 (post-order scoring)
- */
-```
-
-Two lines max. Makes every file self-describing; any future AI reading it knows where to go.
-
-## Drift prevention
-
-- **Fixture parity**: `docs/test-fixtures/hash-vectors.json` is read by both Rust and Node test suites. If output diverges, `make verify` fails.
-- **Spec version**: `docs/normalization-spec.md §11` has a version marker; shards tag their content with it. Changing normalization = bumping version = rebuild shards.
-- **Spec-code links**: file headers (above). If you rename a spec section, grep for its ID and update the headers.
-
-## What the AI must NOT do on its own
-
-- Push to `main` without PR
 - Run `prisma migrate deploy` against production
 - Call Shopify Admin API against a real shop outside dev stores
-- Change any hard rule in this file without explicit user approval
-- Add libraries not already in `package.json` / `Cargo.toml` without noting the reason in the commit body
-- Invent features not in the specs — instead, update the spec first, then implement
+- Change any hard rule here without explicit user approval
+- Add libraries without noting the reason in the commit body
+- Invent features not in the specs — update the spec first, then implement
 
-<!-- code-review-graph MCP tools -->
-## MCP Tools: code-review-graph
+## Knowledge graph
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
-
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
-
-# CLAUDE.md
-
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
-
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
-
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+Use graphify before Grep/Glob/Read for codebase exploration. Graph artifacts live in `graphify-out/` (gitignored). Usage: `.claude/rules/mcp-tools.md`.

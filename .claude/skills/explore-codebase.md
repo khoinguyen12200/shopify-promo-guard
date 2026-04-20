@@ -1,28 +1,30 @@
 ---
 name: Explore Codebase
-description: Navigate and understand codebase structure using the knowledge graph
+description: Navigate and understand codebase structure using the graphify knowledge graph
 ---
 
 ## Explore Codebase
 
-Use the code-review-graph MCP tools to explore and understand the codebase.
+Use graphify (`graphify-out/graph.json`) to navigate the codebase before
+falling back to Grep/Glob/Read.
 
 ### Steps
 
-1. Run `list_graph_stats` to see overall codebase metrics.
-2. Run `get_architecture_overview` for high-level community structure.
-3. Use `list_communities` to find major modules, then `get_community` for details.
-4. Use `semantic_search_nodes` to find specific functions or classes.
-5. Use `query_graph` with patterns like `callers_of`, `callees_of`, `imports_of` to trace relationships.
-6. Use `list_flows` and `get_flow` to understand execution paths.
+1. Run `/graphify query "<your question>"` for broad BFS over the graph.
+2. Run `/graphify query "<question>" --dfs` to trace a specific chain.
+3. Run `/graphify path "NodeA" "NodeB"` to find shortest path between concepts.
+4. Run `/graphify explain "NodeName"` to see a node's neighbors and source locations.
+5. Skim `graphify-out/GRAPH_REPORT.md` for god nodes, surprising connections,
+   and suggested cross-community questions.
+
+### When the graph is stale
+
+If you've made significant edits since the last graph build, rebuild:
+- Incremental: `/graphify . --update` (fast for code-only changes)
+- Full: `/graphify .` (slower, re-extracts docs via LLM)
 
 ### Tips
 
-- Start broad (stats, architecture) then narrow down to specific areas.
-- Use `children_of` on a file to see all its functions and classes.
-- Use `find_large_functions` to identify complex code.
-
-## Token Efficiency Rules
-- ALWAYS start with `get_minimal_context(task="<your task>")` before any other graph tool.
-- Use `detail_level="minimal"` on all calls. Only escalate to "standard" when minimal is insufficient.
-- Target: complete any review/debug/refactor task in ≤5 tool calls and ≤800 total output tokens.
+- Start broad (`query`), then narrow (`explain`, `path`).
+- If a node has many INFERRED edges, treat them as hypotheses — verify in source.
+- Community cohesion scores in the report flag clusters worth investigating.

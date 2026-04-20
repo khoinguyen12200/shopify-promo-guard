@@ -1,7 +1,4 @@
 /**
- * See: docs/build-orchestration-spec.md §3 (dev seed)
- * Related: app/lib/shop.server.ts (ensureShop)
- *
  * Idempotent dev seed — ensures a fake Shop row exists at
  * `dev-shop.myshopify.com` so local dev flows (UI routes, worker, Function
  * tests) always have a shop to hang data off without running OAuth.
