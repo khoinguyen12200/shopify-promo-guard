@@ -30,7 +30,6 @@ import {
   type JobHandlerCtx,
 } from "../lib/jobs.server.js";
 import { addressTrigrams, fullKey } from "../lib/normalize/address.server.js";
-import { normalizeCardNameLast4 } from "../lib/normalize/card.server.js";
 import {
   canonicalEmail,
   emailTrigrams,
@@ -146,16 +145,23 @@ const ORDERS_BY_DISCOUNT_CODE = /* GraphQL */ `
             zip
             countryCodeV2
           }
-          transactions(first: 5) {
-            kind
-            status
-            paymentDetails {
-              ... on CardPaymentDetails {
-                name
-                number
-              }
-            }
-          }
+          # Card name+last4 signal is gated behind Shopify's Protected
+          # Customer Data approval (separate from read_orders scope). Until
+          # that approval is granted, querying the name field causes the
+          # entire orders() response to error with ACCESS_DENIED. The
+          # column + scoring rule stay in place so we can flip this on
+          # later by restoring the transactions sub-selection below.
+          #
+          # transactions(first: 5) {
+          #   kind
+          #   status
+          #   paymentDetails {
+          #     ... on CardPaymentDetails {
+          #       name
+          #       number
+          #     }
+          #   }
+          # }
         }
       }
     }
@@ -298,33 +304,6 @@ function addressFullKeyOrNull(addr: OrderAddress | null): string | null {
   });
 }
 
-/**
- * Extract cardholder name + last4 from the first SALE/CAPTURE/AUTHORIZATION
- * transaction with CardPaymentDetails. Returns null when no usable card
- * transaction exists (gift card, PayPal, wallet-only, etc.).
- *
- * Shopify returns `number` as a masked string like "•••• •••• •••• 1234" or
- * "XXXX-XXXX-XXXX-1234" depending on gateway — we just pick the trailing 4
- * decimal digits.
- */
-function pickCardNameLast4(order: OrderNode): string | null {
-  const transactions = order.transactions ?? [];
-  for (const t of transactions) {
-    const status = (t.status ?? "").toUpperCase();
-    if (status && status !== "SUCCESS") continue;
-    const card = t.paymentDetails;
-    if (!card) continue;
-    const name = card.name ?? "";
-    const num = card.number ?? "";
-    const digits = num.match(/\d/g) ?? [];
-    if (digits.length < 4) continue;
-    const last4 = digits.slice(-4).join("");
-    const key = normalizeCardNameLast4(name, last4);
-    if (key) return key;
-  }
-  return null;
-}
-
 function padSketch(
   s: number[] | undefined,
 ): [number, number, number, number] {
@@ -400,14 +379,8 @@ function extractSignals(
     hashes[ipPrefix.tag] = lookupHex(ipPrefix.tag, ipPrefix.key, salt);
   }
 
-  const cardNameLast4 = pickCardNameLast4(order);
-  if (cardNameLast4) {
-    hashes["card_name_last4"] = lookupHex(
-      "card_name_last4",
-      cardNameLast4,
-      salt,
-    );
-  }
+  // Disabled: see cold-start GraphQL query comment re: Protected Customer Data.
+  const cardNameLast4: string | null = null;
 
   const emailSketch = canonEmail
     ? computeSketch(
