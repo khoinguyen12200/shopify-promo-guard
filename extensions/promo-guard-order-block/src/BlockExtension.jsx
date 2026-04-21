@@ -103,8 +103,8 @@ function Extension() {
 
         <s-stack direction="block" gap="small">
           <s-text>Offer: {flagged.offer.name}</s-text>
-          {flagged.offer.codes.length > 0 ? (
-            <s-text>Codes used: {flagged.offer.codes.join(", ")}</s-text>
+          {flagged.offer.code ? (
+            <s-text>Code used: {flagged.offer.code}</s-text>
           ) : null}
         </s-stack>
 

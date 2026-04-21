@@ -16,7 +16,7 @@ const findManyMock = vi.fn(
 
 vi.mock("../db.server.js", () => ({
   default: {
-    protectedCode: {
+    protectedOffer: {
       findMany: (args: unknown) => findManyMock(args),
     },
   },
@@ -260,14 +260,14 @@ describe("suggestDiscounts", () => {
     expect(out).toHaveLength(1);
     expect(out[0].codes).toEqual(["WELCOME20"]);
 
-    // Prisma query scoped by shopId via the protectedOffer relation.
+    // Prisma query scoped by shopId directly on protectedOffer.
     const findArg = findManyMock.mock.calls[0][0] as {
       where: {
         codeUpper: { in: string[] };
-        protectedOffer: { shopId: string };
+        shopId: string;
       };
     };
-    expect(findArg.where.protectedOffer.shopId).toBe("shop_1");
+    expect(findArg.where.shopId).toBe("shop_1");
     expect(findArg.where.codeUpper.in).toEqual(
       expect.arrayContaining(["WELCOME10", "WELCOME20"]),
     );

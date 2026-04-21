@@ -7,7 +7,7 @@ Review code for the Promo Guard Shopify app (TypeScript/Remix + Rust Functions).
 - Node and Rust share normalization/hash/scoring logic — parity enforced via `docs/test-fixtures/hash-vectors.json`
 - `shared-rust/` is the single source of truth for Rust normalize/hash/scoring
 - `app/lib/` has the Node equivalents
-- Extensions: `promo-guard-validator` (cart/checkout), `promo-guard-discount` (discount Function)
+- Extensions: `promo-guard-validator` (cart/checkout validation; the only enforcement function), `promo-guard-order-block` (admin UI extension on order details)
 
 ## Patterns This Codebase Uses
 - Remix loaders/actions for data fetching (no separate API layer for merchant UI)

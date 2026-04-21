@@ -18,8 +18,7 @@ The decision drives behaviour per context:
 
 | Context | Score ≥ 10 (HIGH) | Score 4–9 (MEDIUM) | Score < 4 (ALLOW) |
 |---|---|---|---|
-| Validation Function (block mode) | `validationAdd` error | allow checkout | allow checkout |
-| Discount Function (silent-strip) | return no discount | return the discount | return the discount |
+| Validation Function (checkout) | `validationAdd` error | allow checkout | allow checkout |
 | Post-order worker (`orders/paid`) | create HIGH `riskAssessment`, tag, notify | create MEDIUM `riskAssessment`, tag | no action |
 
 Thresholds `4` and `10` are constants; see §3.
@@ -266,11 +265,11 @@ def decide(score) → decision:
 
 ### At checkout
 
-| Decision | Validation Function | Discount Function |
-|---|---|---|
-| HIGH | emit `validationAdd` error with message | return `[]` operations (no discount) |
-| MEDIUM | **allow checkout** | **return the discount** |
-| ALLOW | allow | return discount |
+| Decision | Validation Function |
+|---|---|
+| HIGH | emit `validationAdd` error with message (block at checkout) |
+| MEDIUM | **allow checkout** |
+| ALLOW | allow |
 
 Yes — at checkout MEDIUM does nothing. Only HIGH blocks. Medium matches are weak enough that blocking would produce more false positives than the protection is worth. They'll be flagged post-order instead.
 

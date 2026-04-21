@@ -225,7 +225,7 @@ export async function suggestDiscounts(
   }
 
   // 4. Filter out already-protected codes for this shop.
-  // ProtectedCode stores `codeUpper` (uppercase plaintext). We compare by
+  // ProtectedOffer stores `codeUpper` (uppercase plaintext). We compare by
   // uppercase to stay consistent with how the ingest path stores them.
   const candidateCodesUpper = Array.from(
     new Set(raw.flatMap((s) => s.codes.map((c) => c.toUpperCase()))),
@@ -234,11 +234,11 @@ export async function suggestDiscounts(
   const protectedRows =
     candidateCodesUpper.length === 0
       ? []
-      : await prisma.protectedCode.findMany({
+      : await prisma.protectedOffer.findMany({
           where: {
-            codeUpper: { in: candidateCodesUpper },
+            shopId,
             archivedAt: null,
-            protectedOffer: { shopId },
+            codeUpper: { in: candidateCodesUpper },
           },
           select: { codeUpper: true },
         });

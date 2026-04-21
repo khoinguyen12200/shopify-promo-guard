@@ -71,9 +71,8 @@ On desktop it renders as a narrower right column alongside the main content.
 On mobile it stacks below.
 
 **Put in aside:**
-- Status badge + mode label + pause/resume
+- Status badge + pause/resume
 - Code list (read-only)
-- Enforcement mode choice on forms (secondary config, not the primary task)
 - Help text / infrequent settings (e.g. Uninstall)
 
 **Keep in main:**
@@ -88,13 +87,10 @@ On mobile it stacks below.
     <s-badge tone="success">Active</s-badge>
   </s-section>
 
-  <s-section slot="aside" heading="Enforcement mode">
-    <s-choice-list name="mode" label="Mode"
-                   labelAccessibilityVisibility="exclusive"
-                   values={[mode]}>
-      <s-choice value="silent_strip">Silently skip</s-choice>
-      <s-choice value="block">Block checkout</s-choice>
-    </s-choice-list>
+  <s-section slot="aside" heading="Protected code">
+    <s-stack direction="inline" gap="small-200">
+      <s-badge tone="info">WELCOME10</s-badge>
+    </s-stack>
   </s-section>
 
   {/* main column */}

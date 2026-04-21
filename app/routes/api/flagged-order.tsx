@@ -55,14 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       merchantAction: true,
       createdAt: true,
       protectedOffer: {
-        select: {
-          id: true,
-          name: true,
-          codes: {
-            where: { archivedAt: null },
-            select: { code: true },
-          },
-        },
+        select: { id: true, name: true, code: true },
       },
     },
   });
@@ -81,7 +74,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       offer: {
         id: flagged.protectedOffer.id,
         name: flagged.protectedOffer.name,
-        codes: flagged.protectedOffer.codes.map((c) => c.code),
+        code: flagged.protectedOffer.code,
       },
     },
   });

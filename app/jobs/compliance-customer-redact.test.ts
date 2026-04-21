@@ -22,6 +22,9 @@ const {
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
+    protectedOffer: {
+      findMany: vi.fn(),
+    },
   },
   tagsRemoveMock: vi.fn(),
   rebuildShardMock: vi.fn(),
@@ -153,6 +156,10 @@ describe("complianceCustomerRedactHandler", () => {
         }),
       ]);
     prismaMock.redemptionRecord.updateMany.mockResolvedValue({ count: 2 });
+    prismaMock.protectedOffer.findMany.mockResolvedValue([
+      { id: "offer-A", mode: "block" },
+      { id: "offer-B", mode: "watch" },
+    ]);
     prismaMock.complianceRequest.update.mockResolvedValue({});
     unauthenticatedAdminMock.mockResolvedValue({
       admin: { graphql: vi.fn() },
@@ -176,12 +183,16 @@ describe("complianceCustomerRedactHandler", () => {
       }),
     });
 
-    // Shard is rebuilt once (shop-wide), carrying the surviving record's hashes.
+    // Shard is rebuilt once (shop-wide), carrying the surviving record's
+    // hashes inside its offer's bucket.
     expect(rebuildShardMock).toHaveBeenCalledTimes(1);
     const rebuildArgs = rebuildShardMock.mock.calls[0];
     const passedShard = rebuildArgs[2];
-    expect(passedShard.phone_hashes).toContain("aabbccdd");
-    expect(passedShard.email_hashes).toContain("11223344");
+    const survivorBucket = passedShard.offers["offer-A"];
+    expect(survivorBucket).toBeDefined();
+    expect(survivorBucket.phone_hashes).toContain("aabbccdd");
+    expect(survivorBucket.email_hashes).toContain("11223344");
+    expect(survivorBucket.mode).toBe("block");
 
     expect(tagsRemoveMock).toHaveBeenCalledTimes(1);
     const [, gid, tags] = tagsRemoveMock.mock.calls[0];

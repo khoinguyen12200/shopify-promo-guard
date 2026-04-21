@@ -1,8 +1,8 @@
 /**
- * See: docs/admin-ui-spec.md §6 (Offer detail page + stats + pause/resume)
+ * See: docs/admin-ui-spec.md §6 (Offer detail — Activate/Deactivate, mode toggle)
  * Standard: docs/polaris-standards.md §14 (Details / edit-form pattern),
  *           §11 (Metrics card), §2 (page-slot actions)
- * Related: docs/database-design.md (ProtectedOffer, ProtectedCode, RedemptionRecord, FlaggedOrder)
+ * Related: docs/database-design.md (ProtectedOffer, RedemptionRecord, FlaggedOrder)
  */
 import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "react-router";
 import { Form, useLoaderData } from "react-router";
@@ -10,7 +10,8 @@ import { Form, useLoaderData } from "react-router";
 import { StatsCard } from "~/components/stats-card";
 import prisma from "~/db.server";
 import { requireReadOnly } from "~/lib/admin-impersonation.server";
-import { setOfferStatus } from "~/lib/offer-service.server";
+import { setOfferMode, setOfferStatus } from "~/lib/offer-service.server";
+import { resolveShopGid } from "~/lib/shop.server";
 import { authenticate } from "~/shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -18,29 +19,18 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function statusBadge(offer: {
   status: string;
-  mode: string;
   validationFunctionActivated: boolean;
 }) {
-  if (
-    offer.status === "active" &&
-    offer.mode === "block" &&
-    !offer.validationFunctionActivated
-  ) {
-    return { tone: "warning" as const, label: "Needs activation" };
+  if (offer.status === "active" && !offer.validationFunctionActivated) {
+    return { tone: "warning" as const, label: "Activation pending" };
   }
   if (offer.status === "active") {
     return { tone: "success" as const, label: "Active" };
   }
-  if (offer.status === "paused") {
-    return { tone: "neutral" as const, label: "Paused" };
+  if (offer.status === "inactive") {
+    return { tone: "neutral" as const, label: "Inactive" };
   }
   return { tone: "info" as const, label: "Draft" };
-}
-
-function modeLabel(mode: string) {
-  if (mode === "block") return "Block at checkout";
-  if (mode === "silent_strip") return "Silent strip";
-  return mode;
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -59,12 +49,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const offer = await prisma.protectedOffer.findFirst({
     where: { id, shopId: shop.id, archivedAt: null },
-    include: {
-      codes: {
-        where: { archivedAt: null },
-        orderBy: { addedAt: "asc" },
-      },
-    },
   });
   if (!offer) {
     throw new Response("Offer not found", { status: 404 });
@@ -102,15 +86,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     offer: {
       id: offer.id,
       name: offer.name,
-      mode: offer.mode,
       status: offer.status,
+      mode: offer.mode,
       validationFunctionActivated: offer.validationFunctionActivated,
       createdAt: offer.createdAt.toISOString(),
-      codes: offer.codes.map((c) => ({ id: c.id, code: c.code })),
+      code: offer.code,
     },
     metrics: {
       redemptions: redemptionCount,
-      blocked: 0, // dedicated counter ships later (see T35 note in app.offers._index)
+      blocked: 0,
       flagged: flaggedCount,
     },
     recentFlagged: recentFlagged.map((f) => ({
@@ -127,7 +111,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   requireReadOnly(request);
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const id = params.id;
   if (!id) throw new Response("Not found", { status: 404 });
 
@@ -139,22 +123,38 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
-  if (intent === "pause") {
+  const shopGid = await resolveShopGid(shop, admin);
+  const shopRefs = {
+    id: shop.id,
+    shopDomain: shop.shopDomain,
+    shopGid,
+    saltHex: shop.salt,
+  };
+
+  if (intent === "activate" || intent === "deactivate") {
     await setOfferStatus({
+      client: admin.graphql,
+      shop: shopRefs,
       offerId: id,
-      shopId: shop.id,
-      status: "paused",
+      status: intent === "activate" ? "active" : "inactive",
     });
     return { ok: true as const };
   }
-  if (intent === "resume") {
-    await setOfferStatus({
+
+  if (intent === "set_mode") {
+    const mode = String(form.get("mode") ?? "");
+    if (mode !== "block" && mode !== "watch") {
+      throw new Response("Invalid mode", { status: 400 });
+    }
+    await setOfferMode({
+      client: admin.graphql,
+      shop: shopRefs,
       offerId: id,
-      shopId: shop.id,
-      status: "active",
+      mode,
     });
     return { ok: true as const };
   }
+
   throw new Response("Unknown intent", { status: 400 });
 };
 
@@ -181,8 +181,12 @@ export default function OfferDetail() {
   const flaggedHref = `/app/flagged?offerId=${encodeURIComponent(offer.id)}`;
   const editHref = `/app/offers/${offer.id}/edit`;
   const deleteHref = `/app/offers/${offer.id}/delete`;
-  const pauseIntent = offer.status === "paused" ? "resume" : "pause";
-  const pauseLabel = offer.status === "paused" ? "Resume" : "Pause";
+  const isActive = offer.status === "active";
+  const toggleIntent = isActive ? "deactivate" : "activate";
+  const toggleLabel = isActive ? "Deactivate" : "Activate";
+  const nextMode = offer.mode === "watch" ? "block" : "watch";
+  const modeIntentLabel =
+    offer.mode === "watch" ? "Switch to block mode" : "Switch to watch mode";
 
   return (
     <s-page heading={offer.name}>
@@ -196,7 +200,7 @@ export default function OfferDetail() {
         Edit offer
       </s-button>
 
-      {/* Aside: secondary metadata — status, enforcement mode, codes */}
+      {/* Aside: status + activate/deactivate */}
       <s-section slot="aside" heading="Status">
         <s-grid gap="small-300">
           <s-badge tone={badge.tone}>{badge.label}</s-badge>
@@ -204,35 +208,40 @@ export default function OfferDetail() {
             Created {formatDate(offer.createdAt)}
           </s-paragraph>
           <Form method="post">
-            <input type="hidden" name="intent" value={pauseIntent} />
-            <s-button type="submit">{pauseLabel}</s-button>
+            <input type="hidden" name="intent" value={toggleIntent} />
+            <s-button
+              type="submit"
+              variant={isActive ? undefined : "primary"}
+              tone={isActive ? "critical" : undefined}
+            >
+              {toggleLabel}
+            </s-button>
           </Form>
         </s-grid>
       </s-section>
 
-      <s-section slot="aside" heading="Enforcement mode">
+      <s-section slot="aside" heading="Enforcement">
         <s-grid gap="small-300">
-          <s-text>{modeLabel(offer.mode)}</s-text>
+          <s-text>
+            {offer.mode === "watch" ? "Watch only" : "Block at checkout"}
+          </s-text>
           <s-paragraph color="subdued">
-            {offer.mode === "silent_strip"
-              ? "The customer can still check out — they just won't get the discount. Works best for most stores."
-              : "Stops the checkout with an error message. Stronger, but can frustrate legitimate customers."}
+            {offer.mode === "watch"
+              ? "Abusers are flagged for review but allowed through checkout."
+              : "Abusers are blocked at checkout. Borderline matches still appear in flagged orders."}
           </s-paragraph>
+          <Form method="post">
+            <input type="hidden" name="intent" value="set_mode" />
+            <input type="hidden" name="mode" value={nextMode} />
+            <s-button type="submit">{modeIntentLabel}</s-button>
+          </Form>
         </s-grid>
       </s-section>
 
-      <s-section slot="aside" heading="Protected codes">
-        {offer.codes.length === 0 ? (
-          <s-paragraph color="subdued">No active codes.</s-paragraph>
-        ) : (
-          <s-stack direction="inline" gap="small-200">
-            {offer.codes.map((c) => (
-              <s-badge key={c.id} tone="info">
-                {c.code}
-              </s-badge>
-            ))}
-          </s-stack>
-        )}
+      <s-section slot="aside" heading="Protected code">
+        <s-stack direction="inline" gap="small-200">
+          <s-badge tone="info">{offer.code}</s-badge>
+        </s-stack>
       </s-section>
 
       {/* Main: metrics + flagged orders */}

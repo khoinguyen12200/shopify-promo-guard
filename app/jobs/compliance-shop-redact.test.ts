@@ -61,11 +61,9 @@ describe("handleComplianceShopRedact", () => {
     });
 
     const offer = await prisma.protectedOffer.create({
-      data: { shopId: shop.id, name: "Welcome", mode: "monitor" },
-    });
-    await prisma.protectedCode.create({
       data: {
-        protectedOfferId: offer.id,
+        shopId: shop.id,
+        name: "Welcome",
         code: "welcome10",
         codeUpper: "WELCOME10",
       },

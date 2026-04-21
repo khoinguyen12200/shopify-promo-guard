@@ -72,6 +72,7 @@ function parseSketch(
  */
 export function entryFromRecord(record: RedemptionRecord): ShardEntry {
   return {
+    protectedOfferId: record.protectedOfferId,
     ts: Math.floor(record.createdAt.getTime() / 1000),
     phone: record.phoneHash ?? "",
     email: record.emailCanonicalHash ?? "",
@@ -184,9 +185,21 @@ export const complianceCustomerRedactHandler: JobHandler<unknown> = async (
         where: { shopId: shop.id },
       });
 
+    // Per-offer modes drive bucket creation; default to block for any
+    // offer no longer present (e.g. archived since the redemption).
+    const offers = await prisma.protectedOffer.findMany({
+      where: { shopId: shop.id, archivedAt: null },
+      select: { id: true, mode: true },
+    });
+    const modeByOffer = new Map<string, "block" | "watch">();
+    for (const o of offers) {
+      modeByOffer.set(o.id, o.mode === "watch" ? "watch" : "block");
+    }
+
     let shard: Shard = newShard(shop.salt, null);
     for (const r of remaining) {
-      shard = mergeEntry(shard, entryFromRecord(r));
+      const mode = modeByOffer.get(r.protectedOfferId) ?? "block";
+      shard = mergeEntry(shard, entryFromRecord(r), mode);
     }
     await rebuildShard(admin.graphql, creds, shard);
 

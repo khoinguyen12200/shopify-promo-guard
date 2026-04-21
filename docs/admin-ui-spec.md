@@ -10,7 +10,7 @@ What the merchant sees and clicks, page by page. Optimized for "easiest possible
 2. **Familiar to Shopify.** Match the native Shopify admin look (Polaris web components, s-page / s-card / s-button) so merchants feel at home.
 3. **Progressive disclosure.** Advanced options (salt rotation, retention) live in a separate Settings page. The main flow has no settings UI.
 4. **Empty states are action-driven.** No "you have no data yet" walls — every empty state has a CTA that creates value.
-5. **State before chrome.** Every page shows the current state at a glance (Active / Paused / Flagged). Actions are secondary to understanding.
+5. **State before chrome.** Every page shows the current state at a glance (Active / Inactive / Flagged). Actions are secondary to understanding.
 6. **Copy is direct.** No marketing, no jargon. "Block their checkout" not "Implement enforcement rule."
 
 ---
@@ -21,7 +21,7 @@ What the merchant sees and clicks, page by page. Optimized for "easiest possible
 /app                                    → redirects: no offers → /app/onboarding, else → /app/offers
 /app/onboarding                         first-run checklist
 /app/offers                             main page — list of protected offers
-/app/offers/new                         create form (auto-suggest + manual)
+/app/offers/new                         create form (pick from existing Shopify discounts)
 /app/offers/:id                         detail page (stats + recent blocks)
 /app/offers/:id/edit                    edit form (same shape as /new)
 /app/offers/:id/delete                  destructive action (confirm modal)
@@ -49,7 +49,7 @@ What loads immediately after install finishes OAuth.
 │   │      We found 3 discounts that look like welcome offers.   │  │
 │   │      [  Pick one →  ]                                       │  │
 │   │  ☐  Turn on checkout protection                            │  │
-│   │      (only needed for block mode — skipped for now)        │  │
+│   │      Required for blocking to work.                        │  │
 │   └────────────────────────────────────────────────────────────┘  │
 │                                                                    │
 │   Skip onboarding — I'll set it up later                           │
@@ -88,12 +88,12 @@ The main page.
 ┌─ Protected Offers ─────────────────────────── [+ New protected offer] ┐
 │                                                                        │
 │   Welcome program                                          Active      │
-│   WELCOME10 · WELCOME15 · NEWBIE                                       │
+│   WELCOME10                                                            │
 │   204 redemptions this month · 37 blocked · 12 flagged                 │
 │                                                                        │
 │   ─────────────────────────────────────────────────────────────────    │
 │                                                                        │
-│   Free sample                                              Paused      │
+│   Free sample                                              Inactive    │
 │   SAMPLE                                                                │
 │    89 redemptions this month ·  0 blocked                              │
 │                                                                        │
@@ -107,8 +107,8 @@ Each row clickable → `/app/offers/:id`.
 
 Status badge colors:
 - **Active** — green
-- **Paused** — grey
-- **Needs activation** — amber (block mode offer where merchant hasn't flipped the Checkout Rules switch yet)
+- **Inactive** — grey
+- **Needs activation** — amber (offer where merchant hasn't flipped the Checkout Rules switch yet)
 
 Bottom banner appears when `FlaggedOrder.merchantAction = "pending"` count > 0 anywhere in the shop.
 
@@ -116,12 +116,12 @@ Bottom banner appears when `FlaggedOrder.merchantAction = "pending"` count > 0 a
 
 ```
 ┌─ Welcome program                              Needs activation  ──────┐
-│  WELCOME10 · WELCOME15                                                 │
+│  WELCOME10                                                             │
 │                                                                        │
-│  ⚠  You chose Block mode, but the Checkout Rule isn't turned on yet.  │
-│     Your offer isn't being protected.                                  │
+│  ⚠  Your Checkout Rule isn't turned on yet. Your offer isn't being    │
+│     protected — abusers can still redeem it.                          │
 │                                                                        │
-│  [ Open Checkout Rules → ]   or   switch to silent mode               │
+│                          [ Open Checkout Rules → ]                     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -133,6 +133,8 @@ Deep links to `https://admin.shopify.com/store/<domain>/settings/checkout/rules`
 
 Loaded fresh OR pre-populated from onboarding.
 
+One code per offer. We never create or modify discount codes ourselves — the merchant creates discounts in Shopify; we just pick which one to protect. When a checkout uses the protected code and matches a prior redemption, our validation function blocks it.
+
 ### Full form
 
 ```
@@ -141,85 +143,51 @@ Loaded fresh OR pre-populated from onboarding.
 │   Name                                                                 │
 │   [ Welcome program                                                 ]  │
 │                                                                        │
-│   ── Which codes count as this welcome offer? ──                      │
+│   ── Which code does this welcome offer protect? ──                   │
 │                                                                        │
-│   Suggested (one per customer):                                        │
-│   ☑ WELCOME10       10% off · once per customer · active              │
-│   ☑ NEWBIE          Free shipping · once per customer · active        │
-│   ☐ FIRST20         $20 off · once per customer · inactive            │
+│   Discount code                                                        │
+│   [ welcome                                                  🔍 ]      │
+│   ┌────────────────────────────────────────────────────────────┐      │
+│   │ WELCOME10                                                  │      │
+│   │ 10% off · once per customer · active                       │      │
+│   ├────────────────────────────────────────────────────────────┤      │
+│   │ WELCOMEBACK                                                │      │
+│   │ 15% off · scheduled                                        │      │
+│   └────────────────────────────────────────────────────────────┘      │
 │                                                                        │
-│   Other welcome-style codes:                                           │
-│   ☐ WELCOME15       15% off · seasonal · ended 2024-12                │
-│   ☐ SIGNUP5         $5 off · active                                   │
-│                                                                        │
-│   Or add a code manually:                                              │
-│   [ code name                                          ]   [ Add ]     │
-│                                                                        │
-│   Selected:                                                            │
-│   [ WELCOME10 × ]  [ NEWBIE × ]                                        │
-│                                                                        │
-│   ── What happens when someone reuses this offer? ──                  │
-│                                                                        │
-│   ◉  Silently don't apply the discount          (recommended)         │
-│      The customer can still check out — they just don't get the       │
-│      discount. Works best for most stores.                             │
-│                                                                        │
-│   ○  Block their checkout                                              │
-│      Stops the checkout with an error message. Stronger, but can      │
-│      frustrate legitimate customers.                                  │
+│   Don't see your code? Create it in Shopify, then come back —         │
+│   the list refreshes automatically.                                    │
+│   [ Create a discount in Shopify ↗ ]                                   │
 │                                                                        │
 │                                   [ Cancel ]   [ Create offer → ]    │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Manual code input — two cases
-
-**Case A: code exists** (we queried it successfully). Added to the selected list with its details.
-
-**Case B: code doesn't exist**:
+After picking, the input collapses to a chip with a remove button:
 
 ```
-┌─ No code called "WELCOMEBACK" exists ──────────────────────────────┐
-│                                                                     │
-│  Create it through Promo Guard?                                     │
-│                                                                     │
-│  Amount:   (•) Percentage   [ 10 ]%                                │
-│            ( ) Fixed amount                                         │
-│                                                                     │
-│  Usage:    ☑ Once per customer                                      │
-│            ☐ Expire on  [ YYYY-MM-DD ]                             │
-│                                                                     │
-│                                        [ Cancel ]   [ Create → ]   │
-└─────────────────────────────────────────────────────────────────────┘
+┌─ Which code does this welcome offer protect? ───────────────────────┐
+│                                                                      │
+│   [ WELCOME10 ]  [ × ]                                               │
+│                                                                      │
+│   One code per protected offer. Remove this one to pick a different. │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-On confirm → create via `discountCodeAppCreate` with our Discount Function ID, then add to the selected list.
+### "Create a discount in Shopify"
 
-### Silent-strip + existing code → confirmation modal
+Always visible below the search field (regardless of whether the merchant's store has any discount codes). Opens `https://admin.shopify.com/store/<domain>/discounts/new` in a new tab.
 
-Appears on submit if mode is silent-strip AND any selected code is pre-existing native discount:
+### Auto-refresh
 
-```
-┌─ Replace your existing discount? ────────────────────────────────────┐
-│                                                                       │
-│   To silently skip the discount for abusers, we need to replace       │
-│   WELCOME10 and NEWBIE with protected versions.                       │
-│                                                                       │
-│   ✓  Codes stay the same — links in your emails keep working          │
-│   ✓  Discount amount, minimum, dates, limits all copied               │
-│   ✓  Old discounts are archived (you can restore them anytime)        │
-│   ⚠  Analytics for these codes reset                                  │
-│                                                                       │
-│                         [ Cancel ]    [ Replace & protect → ]        │
-└───────────────────────────────────────────────────────────────────────┘
-```
+When the merchant returns to our tab (e.g. after creating a discount in Shopify), we re-query their discount codes and update the dropdown options. Implementation: a `visibilitychange` listener on the picker component re-runs the loader fetcher when the tab becomes visible.
 
 ### Form errors
 
 Inline, below the field, red:
 
-- "Pick at least one code."
-- "This code is already in another protected offer. Remove it from 'X' first."
+- "Pick a code."
+- "This code is already in another protected offer ("X"). Pick a different code."
 - "We couldn't read that discount from your store. Try again."
 
 ---
@@ -229,8 +197,8 @@ Inline, below the field, red:
 ```
 ┌─ Welcome program ─────────── [ Pause ]  [ Edit ]  [ Delete ] ────────┐
 │                                                                       │
-│   Status: Active · Silent strip                                       │
-│   Codes:  WELCOME10 · WELCOME15 · NEWBIE                              │
+│   Status: Active                                                      │
+│   Code:   WELCOME10                                                   │
 │   Created Apr 17, 2026                                                │
 │                                                                       │
 │   ┌─ Last 30 days ────────────────────────────────────────────────┐  │
@@ -261,23 +229,19 @@ Inline, below the field, red:
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Pause** button sets `status = "paused"`. Validation/Discount Functions stop acting on this offer (they read the config metafield at runtime and skip if `status != "active"`).
+- **Activate / Deactivate** button toggles `status` between `"active"` and `"inactive"`. Deactivating drops the offer's bucket from the shard so the checkout validator stops scoring against it; if no active offers remain, the entire Shopify validation is disabled via `validationUpdate(enable: false)`.
+- **Block / Watch toggle** flips `mode` between `"block"` and `"watch"` and rewrites the bucket's mode flag in the shard. Watch mode lets the checkout proceed but still flags abusers post-order so the merchant can review.
 - **Edit** → `/app/offers/:id/edit`.
-- **Delete** → confirm modal. On confirm: if the offer replaced native discounts, offer to restore them. Then archive the protected offer (soft delete — `archivedAt = now`).
+- **Delete** → confirm modal, then archive the protected offer (soft delete — `archivedAt = now`). The merchant's discount code in Shopify is untouched.
 
-### Delete confirmation (with restore option)
+### Delete confirmation
 
 ```
-┌─ Delete protected offer? ────────────────────────────────────────────┐
+┌─ Delete "Welcome program"? ──────────────────────────────────────────┐
 │                                                                       │
-│   Welcome program uses 2 discounts that we created for you            │
-│   (WELCOME10, NEWBIE). Deleting this protected offer will:            │
-│                                                                       │
-│   ○  Restore your original WELCOME10 and NEWBIE                       │
-│      (unprotected, native Shopify versions from before)               │
-│                                                                       │
-│   ◉  Delete the codes entirely                                        │
-│      Links using these codes will stop working.                       │
+│   The protected offer will be removed from Promo Guard.               │
+│   Your discount code in Shopify (WELCOME10) is not affected —         │
+│   abusers will be able to redeem it again.                            │
 │                                                                       │
 │                            [ Cancel ]   [ Delete ]                   │
 └───────────────────────────────────────────────────────────────────────┘
@@ -445,10 +409,10 @@ Auto-dismisses after 4s. `shopify.toast.show("Offer created", { action: { label:
 ## 12. Copy style
 
 - **Sentence case.** "New protected offer" not "New Protected Offer."
-- **Active voice, second person.** "You chose Block mode" not "Block mode has been selected."
+- **Active voice, second person.** "Your offer isn't being protected" not "The offer is unprotected."
 - **No exclamation marks** except in the admin UI extension's "🚩" indicator.
 - **Numbers matter.** "204 redemptions" not "Many redemptions."
-- **No hedging.** "Silently don't apply the discount" not "Optionally withhold the discount."
+- **No hedging.** "Block their checkout" not "Optionally block the checkout."
 - **No Shopify jargon** in merchant-facing text — never say "validation function," "webhook," "metaobject." Internally in error messages, prefix with "Debug:" if we have to surface it.
 
 ---
@@ -488,15 +452,14 @@ app/
   components/
     offer-list-row.tsx
     offer-form.tsx
-    code-picker.tsx              ← auto-suggest + manual entry
-    replace-in-place-modal.tsx
+    code-picker.tsx              ← auto-suggest checkbox list + "Create in Shopify" link
     flagged-order-row.tsx
     setup-checklist.tsx
     stats-card.tsx
     activation-nudge.tsx          ← the "Needs activation" banner
   lib/
     discount-query.server.ts      ← query existing discounts for auto-suggest
-    offer-service.server.ts       ← create/update/delete offer, handle replace-in-place
+    offer-service.server.ts       ← status flips, name updates, soft-archive on delete
     format.ts                     ← date + money formatters
 
 extensions/
@@ -516,7 +479,8 @@ extensions/
 | Per-offer custom error messages | Default message covers 95% of cases |
 | Scheduled reports / weekly email digests | Merchant can bookmark the flagged page |
 | Multi-user permissions within our app | Shopify admin already has staff permissions |
-| A/B testing different modes per offer | Out of scope |
+| Silent / strip-discount mode | Tested in early prototype — couldn't reliably detect abuse from the discount-function context. Block (validation function) is the only enforcement path. |
+| Inline discount creation in our app | Merchants create discounts in Shopify; we only protect existing ones. |
 | Mobile-specific layouts | Polaris components handle this — we don't add custom responsive logic |
 | Onboarding video | Copy + empty-state CTAs are sufficient |
 

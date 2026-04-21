@@ -22,6 +22,8 @@ database.sqlite
 
 
 /extensions/*/dist
+# Auto-generated GraphQL types for JS Function extensions (`npm run typegen`).
+/extensions/*/generated/
 
 # Docker dev data (bind-mount volume, if used)
 /docker-data/

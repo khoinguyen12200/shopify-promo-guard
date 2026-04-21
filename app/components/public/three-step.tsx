@@ -5,7 +5,7 @@
 const STEPS = [
   "Install Promo Guard, pick your welcome offer.",
   "We watch every redemption — phone, address, device, similar email.",
-  "Repeat abuse is caught at checkout (block) or flagged after (silent). Your choice.",
+  "Repeat abuse is blocked at checkout. Borderline cases are flagged for review.",
 ];
 
 export function ThreeStep() {

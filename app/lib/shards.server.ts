@@ -1,31 +1,40 @@
 /**
- * See: docs/function-queries-spec.md §9 (Plan C — single combined shop-wide shard),
+ * See: docs/function-queries-spec.md §9 (Per-offer shard buckets — v2),
  *      docs/webhook-spec.md §5 (shard_append sub-job)
  *
- * Plan C shard: a single shop-wide metafield at
- *   namespace="$app", key="shard_v1"   (app-reserved, no extra scope needed)
- * containing parallel-array hash lists read by the Validation Function and the
- * Discount Function. Schema:
+ * v2 shard: a single shop-wide metafield at
+ *   namespace="$app", key="shard_v2"   (app-reserved, no extra scope needed)
+ * containing a per-offer map of hash buckets read by the Validation Function.
+ * Per-offer segmentation is required for correctness: with one code per
+ * protected offer, a buyer matching offer A's ledger should NOT be blocked
+ * when redeeming a different offer B for the first time.
+ *
+ * Schema:
  *
  *   {
- *     "v": 1,
+ *     "v": 2,
  *     "salt_hex": "<hex of shop salt bytes>",
  *     "default_country_cc": "+1" | null,
- *     "phone_hashes":         ["a1b2c3d4", ...],
- *     "email_hashes":         ["..."],
- *     "address_full_hashes":  ["..."],
- *     "address_house_hashes": ["..."],
- *     "ip_hashes":            ["..."],
- *     "device_hashes":        ["..."],
- *     "email_sketches":       ["32-char hex", ...],
- *     "address_sketches":     ["..."]
+ *     "offers": {
+ *       "<protectedOfferId>": {
+ *         "mode": "block" | "watch",
+ *         "entry_ts":             [1700000001, ...],
+ *         "phone_hashes":         ["a1b2c3d4", ...],
+ *         "email_hashes":         ["..."],
+ *         "address_full_hashes":  ["..."],
+ *         "address_house_hashes": ["..."],
+ *         "ip_hashes":            ["..."],
+ *         "device_hashes":        ["..."],
+ *         "email_sketches":       ["32-char hex", ...],
+ *         "address_sketches":     ["..."]
+ *       },
+ *       ...
+ *     }
  *   }
  *
- * Eviction is LRU-style: the metafield has a per-entry timestamp kept
- * out-of-band in `entry_ts` (parallel to the other arrays) so we can drop
- * oldest entries across ALL signal lists together when the serialized shard
- * exceeds the 10 KB metafield cap. Concurrent appends for the same shop are
- * serialized via a Postgres advisory lock keyed by `shopDomain`.
+ * Eviction is global LRU: when the serialized shard exceeds the cap, find the
+ * offer with the oldest entry and drop its oldest. Concurrent appends for the
+ * same shop are serialized via a Postgres advisory lock keyed by `shopDomain`.
  */
 import { createHash } from "node:crypto";
 
@@ -38,11 +47,11 @@ import {
 
 // -- Constants --------------------------------------------------------------
 
-export const SHARD_VERSION = 1 as const;
+export const SHARD_VERSION = 2 as const;
 // App-reserved namespace — no extra scope needed to read/write; the
 // authenticated app has full control of metafields under $app.
 export const SHARD_NAMESPACE = "$app" as const;
-export const SHARD_KEY = "shard_v1" as const;
+export const SHARD_KEY = "shard_v2" as const;
 export const DEFAULT_MAX_SIZE_BYTES = 10_240;
 
 /** Shop-wide shard key. Same value for every offer on the shop. */
@@ -52,12 +61,16 @@ export function shardKey(): string {
 
 // -- Types ------------------------------------------------------------------
 
+export type OfferMode = "block" | "watch";
+
 /**
- * A single redemption's contribution to the shard, before being split across
- * the parallel hash/sketch arrays. Empty-string hashes are dropped at append
- * time so the persisted arrays never contain placeholder rows.
+ * A single redemption's contribution to the shard, before being routed into
+ * its owning offer's bucket. Empty-string hashes are dropped at append time
+ * so the persisted arrays never contain placeholder rows.
  */
 export interface ShardEntry {
+  /** Which protected offer this redemption belongs to. */
+  protectedOfferId: string;
   /** unix seconds — used for LRU eviction */
   ts: number;
   /** 8-char hex u32, or "" when the signal wasn't available */
@@ -72,11 +85,9 @@ export interface ShardEntry {
   addr_sketch: [number, number, number, number];
 }
 
-/** Plan C shard shape as written to (and read from) the shop metafield. */
-export interface Shard {
-  v: typeof SHARD_VERSION;
-  salt_hex: string;
-  default_country_cc: string | null;
+/** Per-offer bucket of hashes + sketches, plus the offer's enforcement mode. */
+export interface OfferBucket {
+  mode: OfferMode;
   entry_ts: number[];
   phone_hashes: string[];
   email_hashes: string[];
@@ -86,6 +97,14 @@ export interface Shard {
   device_hashes: string[];
   email_sketches: string[];
   address_sketches: string[];
+}
+
+/** v2 shard shape as written to (and read from) the shop metafield. */
+export interface Shard {
+  v: typeof SHARD_VERSION;
+  salt_hex: string;
+  default_country_cc: string | null;
+  offers: Record<string, OfferBucket>;
 }
 
 export interface ShopCreds {
@@ -112,6 +131,13 @@ function emptyShard(saltHex = "", defaultCountryCc: string | null = null): Shard
     v: SHARD_VERSION,
     salt_hex: saltHex,
     default_country_cc: defaultCountryCc,
+    offers: {},
+  };
+}
+
+export function emptyBucket(mode: OfferMode = "block"): OfferBucket {
+  return {
+    mode,
     entry_ts: [],
     phone_hashes: [],
     email_hashes: [],
@@ -138,6 +164,30 @@ function filterSketchArray(xs: unknown): string[] {
   );
 }
 
+function parseMode(v: unknown): OfferMode {
+  return v === "watch" ? "watch" : "block";
+}
+
+function parseBucket(v: unknown): OfferBucket {
+  if (!v || typeof v !== "object") return emptyBucket();
+  const obj = v as Partial<Record<keyof OfferBucket, unknown>>;
+  const entryTs = Array.isArray(obj.entry_ts)
+    ? (obj.entry_ts.filter((x) => typeof x === "number") as number[])
+    : [];
+  return {
+    mode: parseMode(obj.mode),
+    entry_ts: entryTs,
+    phone_hashes: filterHashArray(obj.phone_hashes),
+    email_hashes: filterHashArray(obj.email_hashes),
+    address_full_hashes: filterHashArray(obj.address_full_hashes),
+    address_house_hashes: filterHashArray(obj.address_house_hashes),
+    ip_hashes: filterHashArray(obj.ip_hashes),
+    device_hashes: filterHashArray(obj.device_hashes),
+    email_sketches: filterSketchArray(obj.email_sketches),
+    address_sketches: filterSketchArray(obj.address_sketches),
+  };
+}
+
 // -- Serialize / parse ------------------------------------------------------
 
 export function serializeShard(shard: Shard): string {
@@ -147,7 +197,8 @@ export function serializeShard(shard: Shard): string {
 /**
  * Parse a shard JSON string. Tolerates null, corrupt payloads, and malformed
  * entries (per-row filtering) so a single bad hash cannot take the shop
- * offline — any missing field becomes empty / null.
+ * offline. Unknown shard versions are coerced to an empty v2 shard so the next
+ * append starts the new structure cleanly.
  */
 export function parseShard(
   raw: string | null | undefined,
@@ -165,118 +216,180 @@ export function parseShard(
     return emptyShard(fallbackSalt, fallbackCc);
   }
 
-  const obj = parsed as Partial<Record<keyof Shard, unknown>>;
+  const obj = parsed as Record<string, unknown>;
   const saltHex =
     typeof obj.salt_hex === "string" ? obj.salt_hex : fallbackSalt;
   const cc =
     typeof obj.default_country_cc === "string"
       ? obj.default_country_cc
       : fallbackCc;
-  const entryTs = Array.isArray(obj.entry_ts)
-    ? (obj.entry_ts.filter((v) => typeof v === "number") as number[])
-    : [];
+
+  // Anything that isn't a v2 object → fresh empty shard. We don't auto-migrate
+  // v1 data; the shard is just a fingerprint cache and re-fills naturally.
+  if (obj.v !== SHARD_VERSION || !obj.offers || typeof obj.offers !== "object") {
+    return emptyShard(saltHex, cc);
+  }
+
+  const offers: Record<string, OfferBucket> = {};
+  for (const [offerId, bucket] of Object.entries(obj.offers as Record<string, unknown>)) {
+    if (!offerId) continue;
+    offers[offerId] = parseBucket(bucket);
+  }
 
   return {
     v: SHARD_VERSION,
     salt_hex: saltHex,
     default_country_cc: cc,
-    entry_ts: entryTs,
-    phone_hashes: filterHashArray(obj.phone_hashes),
-    email_hashes: filterHashArray(obj.email_hashes),
-    address_full_hashes: filterHashArray(obj.address_full_hashes),
-    address_house_hashes: filterHashArray(obj.address_house_hashes),
-    ip_hashes: filterHashArray(obj.ip_hashes),
-    device_hashes: filterHashArray(obj.device_hashes),
-    email_sketches: filterSketchArray(obj.email_sketches),
-    address_sketches: filterSketchArray(obj.address_sketches),
+    offers,
   };
 }
 
 // -- Append an entry --------------------------------------------------------
 
 /**
- * Merge a single `ShardEntry` into a parsed shard. Each non-empty signal is
- * pushed onto its respective array. `entry_ts` tracks the timestamp of *this*
- * entry so future eviction can drop the oldest as one logical unit.
- *
- * Note: eviction below operates on array indices, but the hash arrays from
- * different signals may have different lengths (e.g. a redemption with phone
- * but no address). We track evict-order via `entry_ts`, which is the earliest
- * timestamp associated with each index position; eviction lops the front of
- * every array simultaneously to keep things simple and bounded.
+ * Merge a single `ShardEntry` into a parsed shard, into the bucket for
+ * `entry.protectedOfferId`. The bucket is created if missing using
+ * `bucketMode` (default "block"). Existing buckets keep their stored mode —
+ * use `setOfferMode` to change it.
  */
-export function mergeEntry(shard: Shard, entry: ShardEntry): Shard {
+export function mergeEntry(
+  shard: Shard,
+  entry: ShardEntry,
+  bucketMode: OfferMode = "block",
+): Shard {
+  const offers: Record<string, OfferBucket> = { ...shard.offers };
+  const existing = offers[entry.protectedOfferId];
+  const bucket: OfferBucket = existing
+    ? cloneBucket(existing)
+    : emptyBucket(bucketMode);
+
   const push = (arr: string[], v: string) => {
     if (v && HEX8.test(v)) arr.push(v);
   };
 
-  const out: Shard = {
-    ...shard,
-    entry_ts: [...shard.entry_ts, entry.ts],
-    phone_hashes: [...shard.phone_hashes],
-    email_hashes: [...shard.email_hashes],
-    address_full_hashes: [...shard.address_full_hashes],
-    address_house_hashes: [...shard.address_house_hashes],
-    ip_hashes: [...shard.ip_hashes],
-    device_hashes: [...shard.device_hashes],
-    email_sketches: [...shard.email_sketches],
-    address_sketches: [...shard.address_sketches],
-  };
-
-  push(out.phone_hashes, entry.phone);
-  push(out.email_hashes, entry.email);
-  push(out.address_full_hashes, entry.addr_full);
-  push(out.address_house_hashes, entry.addr_house);
-  push(out.ip_hashes, entry.ip24);
-  push(out.device_hashes, entry.device);
+  bucket.entry_ts.push(entry.ts);
+  push(bucket.phone_hashes, entry.phone);
+  push(bucket.email_hashes, entry.email);
+  push(bucket.address_full_hashes, entry.addr_full);
+  push(bucket.address_house_hashes, entry.addr_house);
+  push(bucket.ip_hashes, entry.ip24);
+  push(bucket.device_hashes, entry.device);
   if (!isSketchZero(entry.email_sketch)) {
-    out.email_sketches.push(sketchToHex(entry.email_sketch));
+    bucket.email_sketches.push(sketchToHex(entry.email_sketch));
   }
   if (!isSketchZero(entry.addr_sketch)) {
-    out.address_sketches.push(sketchToHex(entry.addr_sketch));
+    bucket.address_sketches.push(sketchToHex(entry.addr_sketch));
   }
 
-  return out;
+  offers[entry.protectedOfferId] = bucket;
+  return { ...shard, offers };
+}
+
+function cloneBucket(b: OfferBucket): OfferBucket {
+  return {
+    mode: b.mode,
+    entry_ts: [...b.entry_ts],
+    phone_hashes: [...b.phone_hashes],
+    email_hashes: [...b.email_hashes],
+    address_full_hashes: [...b.address_full_hashes],
+    address_house_hashes: [...b.address_house_hashes],
+    ip_hashes: [...b.ip_hashes],
+    device_hashes: [...b.device_hashes],
+    email_sketches: [...b.email_sketches],
+    address_sketches: [...b.address_sketches],
+  };
+}
+
+// -- Mode + lifecycle helpers ----------------------------------------------
+
+/** Set the mode of an offer's bucket (creates an empty bucket if absent). */
+export function setBucketMode(
+  shard: Shard,
+  protectedOfferId: string,
+  mode: OfferMode,
+): Shard {
+  const offers = { ...shard.offers };
+  const existing = offers[protectedOfferId];
+  offers[protectedOfferId] = existing
+    ? { ...cloneBucket(existing), mode }
+    : emptyBucket(mode);
+  return { ...shard, offers };
+}
+
+/** Remove an offer's entire bucket (used when deactivating or archiving). */
+export function dropOfferBucket(
+  shard: Shard,
+  protectedOfferId: string,
+): Shard {
+  if (!shard.offers[protectedOfferId]) return shard;
+  const offers = { ...shard.offers };
+  delete offers[protectedOfferId];
+  return { ...shard, offers };
 }
 
 // -- Eviction ---------------------------------------------------------------
 
 /**
- * Drop from the front (oldest) across every array until the serialized shard
- * is within `maxSizeBytes`. Each array is trimmed independently but governed
- * by the same front-pop cadence so the newest entries always survive.
+ * Drop the globally-oldest entry until the serialized shard fits. We pop from
+ * whichever offer's bucket currently holds the oldest `entry_ts[0]`. Each pop
+ * trims that bucket's parallel arrays in lockstep, keeping per-bucket
+ * invariants intact.
  */
 export function evictOldest(
   shard: Shard,
   maxSizeBytes = DEFAULT_MAX_SIZE_BYTES,
 ): Shard {
-  let out: Shard = { ...shard };
+  let out: Shard = { ...shard, offers: { ...shard.offers } };
   while (Buffer.byteLength(serializeShard(out), "utf8") > maxSizeBytes) {
-    const anyLeft =
-      out.entry_ts.length > 0 ||
-      out.phone_hashes.length > 0 ||
-      out.email_hashes.length > 0 ||
-      out.address_full_hashes.length > 0 ||
-      out.address_house_hashes.length > 0 ||
-      out.ip_hashes.length > 0 ||
-      out.device_hashes.length > 0 ||
-      out.email_sketches.length > 0 ||
-      out.address_sketches.length > 0;
-    if (!anyLeft) break;
-    out = {
-      ...out,
-      entry_ts: out.entry_ts.slice(1),
-      phone_hashes: out.phone_hashes.slice(1),
-      email_hashes: out.email_hashes.slice(1),
-      address_full_hashes: out.address_full_hashes.slice(1),
-      address_house_hashes: out.address_house_hashes.slice(1),
-      ip_hashes: out.ip_hashes.slice(1),
-      device_hashes: out.device_hashes.slice(1),
-      email_sketches: out.email_sketches.slice(1),
-      address_sketches: out.address_sketches.slice(1),
-    };
+    let victimId: string | null = null;
+    let victimTs = Infinity;
+    for (const [offerId, bucket] of Object.entries(out.offers)) {
+      const front = bucket.entry_ts[0];
+      if (typeof front === "number" && front < victimTs) {
+        victimTs = front;
+        victimId = offerId;
+      }
+    }
+    if (!victimId) break; // every bucket empty
+    const target = out.offers[victimId];
+    if (!target || target.entry_ts.length === 0) break;
+    const trimmed = popFrontFromBucket(target);
+    const offers = { ...out.offers };
+    if (
+      trimmed.entry_ts.length === 0 &&
+      trimmed.phone_hashes.length === 0 &&
+      trimmed.email_hashes.length === 0 &&
+      trimmed.address_full_hashes.length === 0 &&
+      trimmed.address_house_hashes.length === 0 &&
+      trimmed.ip_hashes.length === 0 &&
+      trimmed.device_hashes.length === 0 &&
+      trimmed.email_sketches.length === 0 &&
+      trimmed.address_sketches.length === 0
+    ) {
+      // Bucket fully drained — drop it from the offers map so we don't keep
+      // re-considering an empty entry.
+      delete offers[victimId];
+    } else {
+      offers[victimId] = trimmed;
+    }
+    out = { ...out, offers };
   }
   return out;
+}
+
+function popFrontFromBucket(b: OfferBucket): OfferBucket {
+  return {
+    mode: b.mode,
+    entry_ts: b.entry_ts.slice(1),
+    phone_hashes: b.phone_hashes.slice(1),
+    email_hashes: b.email_hashes.slice(1),
+    address_full_hashes: b.address_full_hashes.slice(1),
+    address_house_hashes: b.address_house_hashes.slice(1),
+    ip_hashes: b.ip_hashes.slice(1),
+    device_hashes: b.device_hashes.slice(1),
+    email_sketches: b.email_sketches.slice(1),
+    address_sketches: b.address_sketches.slice(1),
+  };
 }
 
 // -- Read helper ------------------------------------------------------------
@@ -337,7 +450,7 @@ export async function getShopMetafield(
 /**
  * Map a `shopDomain` to a signed bigint suitable for `pg_advisory_xact_lock`.
  * We take the first 8 bytes of SHA-256 and reinterpret as signed 64-bit.
- * Plan C uses a shop-wide shard, so the lock is per-shop (not per-offer).
+ * Lock is per-shop because the shard metafield is shop-wide.
  */
 export function advisoryLockKey(shopDomain: string): bigint {
   const digest = createHash("sha256").update(shopDomain).digest();
@@ -356,12 +469,15 @@ export interface ShardWriteOptions {
   saltHex?: string;
   /** Default phone country code for E.164 normalization in the Function. */
   defaultCountryCc?: string | null;
+  /** Mode to use if the offer's bucket doesn't exist yet. */
+  bucketMode?: OfferMode;
 }
 
 /**
- * Read the current shop-wide shard, merge `entry`, evict oldest until under
- * cap, and write back. Wrapped in a Postgres transaction holding an advisory
- * lock so concurrent appends for the same shop don't trample each other.
+ * Read the current shop-wide shard, merge `entry` into its offer's bucket,
+ * evict oldest until under cap, and write back. Wrapped in a Postgres
+ * transaction holding an advisory lock so concurrent appends for the same
+ * shop don't trample each other.
  */
 export async function appendEntry(
   client: AdminGqlClient,
@@ -372,6 +488,7 @@ export async function appendEntry(
   const maxSize = opts.maxSizeBytes ?? DEFAULT_MAX_SIZE_BYTES;
   const saltHex = opts.saltHex ?? "";
   const defaultCc = opts.defaultCountryCc ?? null;
+  const bucketMode = opts.bucketMode ?? "block";
   const lockKey = advisoryLockKey(creds.shopDomain);
 
   return prisma.$transaction(async (tx) => {
@@ -388,7 +505,7 @@ export async function appendEntry(
     existing.default_country_cc = defaultCc;
 
     const ts = entry.ts || Math.floor((opts.nowMs ?? Date.now()) / 1000);
-    const merged = mergeEntry(existing, { ...entry, ts });
+    const merged = mergeEntry(existing, { ...entry, ts }, bucketMode);
     const trimmed = evictOldest(merged, maxSize);
     const value = serializeShard(trimmed);
 
@@ -408,7 +525,8 @@ export async function appendEntry(
 
 /**
  * Overwrite the shop-wide shard with the given pre-assembled shard (used by
- * `customers/redact` and `rotate_salt` to rebuild from a DB hydration).
+ * `customers/redact`, `rotate_salt`, and offer activation/mode toggles to
+ * rebuild from a DB hydration).
  */
 export async function rebuildShard(
   client: AdminGqlClient,

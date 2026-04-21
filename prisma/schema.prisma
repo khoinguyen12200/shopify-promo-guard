@@ -51,8 +51,12 @@ model ProtectedOffer {
   id     String @id @default(cuid())
   shopId String
   name   String
-  mode   String
   status String @default("active")
+  mode   String @default("block")
+
+  code           String
+  codeUpper      String
+  discountNodeId String?
 
   shardVersion    Int    @default(0)
   coldStartStatus String @default("pending")
@@ -60,41 +64,21 @@ model ProtectedOffer {
   coldStartTotal  Int    @default(0)
 
   validationFunctionActivated Boolean @default(false)
-  discountIdAppOwned          String?
 
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   archivedAt DateTime?
 
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  codes             ProtectedCode[]
   redemptionRecords RedemptionRecord[]
   flaggedOrders     FlaggedOrder[]
   shardStates       ShardState[]
 
+  // Uniqueness on `(shopId, codeUpper)` is enforced by a PARTIAL unique
+  // index (only when `archivedAt IS NULL`) so deleted/archived offers don't
+  // squat on their original code. Maintained via raw SQL in
+  // `prisma/migrations/.../partial_unique_active_offer_code/migration.sql`.
   @@index([shopId, status])
-}
-
-// -----------------------------------------------------------------------------
-// ProtectedCode — individual discount codes within an offer
-// -----------------------------------------------------------------------------
-
-model ProtectedCode {
-  id               String @id @default(cuid())
-  protectedOfferId String
-  code             String
-  codeUpper        String
-
-  discountNodeId         String?
-  isAppOwned             Boolean @default(false)
-  replacedDiscountNodeId String?
-
-  addedAt    DateTime  @default(now())
-  archivedAt DateTime?
-
-  protectedOffer ProtectedOffer @relation(fields: [protectedOfferId], references: [id], onDelete: Cascade)
-
-  @@unique([protectedOfferId, codeUpper])
   @@index([codeUpper])
 }
 

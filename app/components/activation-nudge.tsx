@@ -19,15 +19,12 @@ export function ActivationNudge({ offer }: ActivationNudgeProps) {
     <s-banner tone="warning" heading={`${offer.name} — needs activation`}>
       <s-stack gap="base">
         <s-paragraph>
-          You chose Block mode, but the Checkout Rule isn&apos;t turned on yet.
-          Your offer isn&apos;t being protected.
+          Your Checkout Rule isn&apos;t turned on yet. Your offer isn&apos;t
+          being protected — abusers can still redeem it.
         </s-paragraph>
         <s-stack direction="inline" gap="small-300">
           <s-button variant="primary" href={rulesUrl} target="_blank">
             Open Checkout Rules
-          </s-button>
-          <s-button href={`/app/offers/${offer.id}/edit`}>
-            Switch to silent mode
           </s-button>
         </s-stack>
       </s-stack>

@@ -22,9 +22,8 @@ Source of truth: **Prisma + Postgres in production, SQLite in dev** (Shopify Rem
 ```
   Shop (install-scoped)
     │
-    ├── ProtectedOffer (1..N per shop)
+    ├── ProtectedOffer (1..N per shop — one discount code per offer)
     │     │
-    │     ├── ProtectedCode (1..N per offer — codes in the group)
     │     ├── RedemptionRecord (N per offer — every prior redemption)
     │     ├── FlaggedOrder (N per offer — post-order risk)
     │     └── ShardState (5 per offer — metafield ledger shards)
@@ -74,15 +73,19 @@ model Shop {
 
 
 // -----------------------------------------------------------------------------
-// ProtectedOffer — a group of codes treated as one welcome program
+// ProtectedOffer — one welcome-discount code, protected from repeat redemption
 // -----------------------------------------------------------------------------
 
 model ProtectedOffer {
   id              String   @id @default(cuid())
   shopId          String
   name            String                              // merchant-facing label
-  mode            String                              // "silent_strip" | "block"
-  status          String   @default("active")         // "active" | "paused" | "archived"
+  status          String   @default("active")         // "active" | "inactive" | "archived"
+  mode            String   @default("block")           // "block" | "watch"
+
+  code            String                              // case-insensitive in Shopify; we store as typed
+  codeUpper       String                              // uppercase normalized, for filtering
+  discountNodeId  String?                             // Shopify discount GID we're protecting
 
   shardVersion    Int      @default(0)                // bumps on every shard rebuild
   coldStartStatus String   @default("pending")        // "pending" | "running" | "complete" | "failed"
@@ -90,42 +93,18 @@ model ProtectedOffer {
   coldStartTotal  Int      @default(0)
 
   validationFunctionActivated  Boolean  @default(false)   // merchant flipped the Checkout Rules switch
-  discountIdAppOwned           String?                    // if mode=silent_strip and we created a discount
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   archivedAt  DateTime?
 
   shop               Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  codes              ProtectedCode[]
   redemptionRecords  RedemptionRecord[]
   flaggedOrders      FlaggedOrder[]
   shardStates        ShardState[]
 
+  @@unique([shopId, codeUpper])             // one offer per code per shop (DB-enforced)
   @@index([shopId, status])
-}
-
-
-// -----------------------------------------------------------------------------
-// ProtectedCode — individual discount codes within an offer
-// -----------------------------------------------------------------------------
-
-model ProtectedCode {
-  id                 String   @id @default(cuid())
-  protectedOfferId   String
-  code               String                              // case-insensitive in Shopify; we store as typed
-  codeUpper          String                              // uppercase normalized, for filtering
-
-  discountNodeId         String?                         // current Shopify discount GID
-  isAppOwned             Boolean  @default(false)        // did we create it via discountCodeAppCreate?
-  replacedDiscountNodeId String?                         // archived original (for restore on uninstall)
-
-  addedAt     DateTime @default(now())
-  archivedAt  DateTime?
-
-  protectedOffer ProtectedOffer @relation(fields: [protectedOfferId], references: [id], onDelete: Cascade)
-
-  @@unique([protectedOfferId, codeUpper])
   @@index([codeUpper])
 }
 
@@ -239,13 +218,13 @@ model FlaggedOrder {
 
 
 // -----------------------------------------------------------------------------
-// Job — background work queue (cold-start backfill, shard rebuild, replace-in-place, etc.)
+// Job — background work queue (cold-start backfill, shard rebuild, etc.)
 // -----------------------------------------------------------------------------
 
 model Job {
   id         String   @id @default(cuid())
   shopId     String
-  type       String                                    // "cold_start" | "shard_rebuild" | "replace_discount" | "backfill_risk"
+  type       String                                    // "cold_start" | "shard_rebuild" | "backfill_risk"
   status     String   @default("pending")              // "pending" | "running" | "complete" | "failed"
   payload    String                                    // JSON
   progress   Int      @default(0)                      // 0..total
@@ -362,8 +341,7 @@ model Session {
 | Install / uninstall | `Shop` |
 | Per-shop salt for hashing | `Shop.salt` |
 | Per-shop encryption for raw PII | `Shop.encryptionKey` (wrapped by app-level KEK) |
-| Protected offer (codes + mode) | `ProtectedOffer` + `ProtectedCode` |
-| Replace-in-place (silent-strip of existing discount) | `ProtectedCode.replacedDiscountNodeId` |
+| Protected offer (one code) | `ProtectedOffer` |
 | Authoritative ledger | `RedemptionRecord` |
 | 5 sharded metafields | `ShardState` (one row per shard, 5 per offer) |
 | Post-order flag | `FlaggedOrder` |
@@ -439,7 +417,6 @@ Hash columns are NOT encrypted — they're already one-way and salted per-shop.
 |---|---|
 | New signal type (e.g., device fingerprint) | Add column to `RedemptionRecord` (hash + ciphertext + sketch if fuzzy) + new `ShardState.shardKey` value. No enum change. |
 | New risk level (e.g., LOW for analytics) | `FlaggedOrder.riskLevel` is a string — just start writing it. |
-| New offer mode (e.g., "warn without blocking") | `ProtectedOffer.mode` is a string — add the value + code path. |
 | Per-offer configurable scoring weights | Add `ProtectedOffer.scoringConfig String?` (JSON) — null means use defaults. |
 | Cross-offer shared ledger | Add `ProtectedOffer.ledgerGroupId String?` — all offers with same group id share shards. |
 | Additional shards | Add new `ShardState.shardKey` value + rebuild logic. Metafield namespace `$app` is flat. |

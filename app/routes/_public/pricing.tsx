@@ -50,11 +50,11 @@ const FAQS: Array<{ q: string; a: string }> = [
   },
   {
     q: "What if I want to undo protection?",
-    a: "Delete the protected offer; we restore any discounts we replaced. No lock-in.",
+    a: "Delete the protected offer in Promo Guard. Your Shopify discount codes stay exactly where they were — we never modify them. No lock-in.",
   },
   {
     q: "What if the same family orders from the same address?",
-    a: "First order goes through normally. A second order using the same code would be blocked or silently skipped. They can still check out at full price.",
+    a: "First order goes through normally. A second order using the same code is blocked at checkout. They can still check out at full price.",
   },
   {
     q: "How do I test it without going live?",

@@ -45,7 +45,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }),
     prisma.protectedOffer.findMany({
       where: { shopId: shop.id, archivedAt: null },
-      select: { id: true, name: true, status: true, mode: true },
+      select: { id: true, name: true, status: true },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
@@ -144,13 +144,11 @@ export default function ShopDetail() {
           <s-table>
             <s-table-header-row>
               <s-table-header>Name</s-table-header>
-              <s-table-header>Mode</s-table-header>
               <s-table-header>Status</s-table-header>
             </s-table-header-row>
             {offers.map((o) => (
               <s-table-row key={o.id}>
                 <s-table-cell>{o.name}</s-table-cell>
-                <s-table-cell>{o.mode}</s-table-cell>
                 <s-table-cell>{o.status}</s-table-cell>
               </s-table-row>
             ))}

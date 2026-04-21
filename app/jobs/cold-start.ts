@@ -10,7 +10,7 @@
  * shard_append pipeline. Once this completes, Promo Guard has historical
  * context for the next checkout / order.
  *
- * The job is checkpointed: the payload carries a `codeIndex` and `cursor` so
+ * The job is checkpointed: the payload carries a `cursor` so
  * throttle-triggered retries resume exactly where they left off. Pagination is
  * 250/page (Shopify max), bounded by `MAX_PAGES_PER_RUN` so a very large shop
  * re-enqueues itself rather than blocking a worker slot indefinitely.
@@ -68,9 +68,7 @@ const PROGRESS_CHUNK = 25;
 
 export interface ColdStartPayload {
   protectedOfferId: string;
-  /** Index into the offer's code list (stable sort by addedAt). */
-  codeIndex?: number;
-  /** Cursor within the current code's orders() pagination. */
+  /** Cursor within the offer code's orders() pagination. */
   cursor?: string | null;
 }
 
@@ -96,7 +94,6 @@ export async function enqueueColdStart(args: {
     type: "cold_start",
     payload: {
       protectedOfferId: args.protectedOfferId,
-      codeIndex: 0,
       cursor: null,
     } satisfies ColdStartPayload,
   });
@@ -326,15 +323,13 @@ function extractSignals(
     hashes["address_full"] = lookupHex("addr_full", fullKeyStr, salt);
   }
 
-  // Billing: only emit a second hash when billing exists AND its full-key
-  // differs from the primary. Collapses the common (shipping == billing) case.
-  const billingFullKeyStr = shippingAddr
-    ? addressFullKeyOrNull(billingAddrRaw)
-    : null;
-  const billingAddr =
-    billingFullKeyStr && billingFullKeyStr !== fullKeyStr
-      ? billingAddrRaw
-      : null;
+  // Billing: hash + store whenever it's present, even when it equals shipping.
+  // The earlier dedup trick saved ~20 bytes per row but created a detection
+  // gap (a repeat abuser reusing the same billing card on a different
+  // shipping address wouldn't match on address at all). Storage cost is
+  // negligible compared to coverage.
+  const billingFullKeyStr = addressFullKeyOrNull(billingAddrRaw);
+  const billingAddr = billingFullKeyStr ? billingAddrRaw : null;
   if (billingAddr && billingFullKeyStr) {
     hashes["billing_address_full"] = lookupHex(
       "addr_full",
@@ -452,6 +447,7 @@ async function backfillOrder(args: InsertArgs): Promise<boolean> {
       saltHex: shop.salt,
       defaultCountryCc: null,
       entry: {
+        protectedOfferId,
         ts: Math.floor(created.createdAt.getTime() / 1000),
         phone: sig.hashes["phone"] ?? "",
         email: sig.hashes["email_canonical"] ?? "",
@@ -483,24 +479,11 @@ export const handleColdStart: JobHandler<unknown> = async (payload, ctx) => {
 
   const offer = await prisma.protectedOffer.findUnique({
     where: { id: protectedOfferId },
-    include: {
-      codes: {
-        where: { archivedAt: null },
-        orderBy: { addedAt: "asc" },
-      },
-    },
   });
 
   // Offer gone or archived → nothing to do. Don't crash — the queue shouldn't
   // keep retrying a job for a deleted offer.
   if (!offer || offer.archivedAt || offer.shopId !== shop.id) return;
-  if (offer.codes.length === 0) {
-    await prisma.protectedOffer.update({
-      where: { id: offer.id },
-      data: { coldStartStatus: "complete", coldStartDone: 0, coldStartTotal: 0 },
-    });
-    return;
-  }
 
   // First invocation marks running. Subsequent (continuation) invocations
   // leave the status alone.
@@ -516,59 +499,49 @@ export const handleColdStart: JobHandler<unknown> = async (payload, ctx) => {
   const kek = loadKek();
   const dek = unwrapDek(shop.encryptionKey, kek);
 
-  let codeIndex = payload.codeIndex ?? 0;
   let cursor: string | null = payload.cursor ?? null;
   let pagesThisRun = 0;
   let backfilledThisRun = 0;
+  const code = offer.codeUpper;
 
   try {
-    while (codeIndex < offer.codes.length) {
-      const currentCode = offer.codes[codeIndex];
-      const code = currentCode.codeUpper;
+    // Page through this code's orders until either (a) done, (b) we hit
+    // MAX_PAGES_PER_RUN and re-enqueue, or (c) Shopify throttles us and we
+    // throw (queue backoff reschedules).
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (pagesThisRun >= MAX_PAGES_PER_RUN) {
+        await scheduleContinuation(ctx, {
+          shopId: shop.id,
+          protectedOfferId,
+          cursor,
+        });
+        return;
+      }
+      const page = await fetchOrdersPage(admin.graphql, code, cursor);
+      pagesThisRun++;
 
-      // Page through this code's orders until either (a) done, (b) we hit
-      // MAX_PAGES_PER_RUN and re-enqueue, or (c) Shopify throttles us and we
-      // throw (queue backoff reschedules).
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        if (pagesThisRun >= MAX_PAGES_PER_RUN) {
-          await scheduleContinuation(ctx, {
-            shopId: shop.id,
-            protectedOfferId,
-            codeIndex,
-            cursor,
-          });
-          return;
-        }
-        const page = await fetchOrdersPage(admin.graphql, code, cursor);
-        pagesThisRun++;
-
-        for (const edge of page.edges) {
-          const inserted = await backfillOrder({
-            shop,
-            protectedOfferId,
-            codeUsed: code,
-            order: edge.node,
-            dek,
-            shopGid,
-          });
-          if (inserted) {
-            backfilledThisRun++;
-            if (backfilledThisRun % PROGRESS_CHUNK === 0) {
-              await bumpProgress(ctx, offer.id, PROGRESS_CHUNK);
-            }
+      for (const edge of page.edges) {
+        const inserted = await backfillOrder({
+          shop,
+          protectedOfferId,
+          codeUsed: code,
+          order: edge.node,
+          dek,
+          shopGid,
+        });
+        if (inserted) {
+          backfilledThisRun++;
+          if (backfilledThisRun % PROGRESS_CHUNK === 0) {
+            await bumpProgress(ctx, offer.id, PROGRESS_CHUNK);
           }
         }
-
-        if (!page.pageInfo.hasNextPage || !page.pageInfo.endCursor) {
-          break;
-        }
-        cursor = page.pageInfo.endCursor;
       }
 
-      // Done with this code — move to the next one from the top.
-      codeIndex++;
-      cursor = null;
+      if (!page.pageInfo.hasNextPage || !page.pageInfo.endCursor) {
+        break;
+      }
+      cursor = page.pageInfo.endCursor;
     }
 
     // Flush any residual progress not yet committed.
@@ -604,7 +577,6 @@ async function scheduleContinuation(
   args: {
     shopId: string;
     protectedOfferId: string;
-    codeIndex: number;
     cursor: string | null;
   },
 ): Promise<void> {
@@ -613,7 +585,6 @@ async function scheduleContinuation(
     type: "cold_start",
     payload: {
       protectedOfferId: args.protectedOfferId,
-      codeIndex: args.codeIndex,
       cursor: args.cursor,
     } satisfies ColdStartPayload,
   });

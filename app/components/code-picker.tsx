@@ -1,45 +1,35 @@
 /**
- * See: docs/admin-ui-spec.md §5 (Suggested + Other sections, manual code entry)
- * Standard: docs/polaris-standards.md §9 (Stack vs Grid), §6 (Choice list / checkbox)
+ * See: docs/admin-ui-spec.md §5 (Create offer — code picker)
+ * Standard: docs/polaris-standards.md §6 (text-field), §9 (Stack vs Grid)
  * Related: app/lib/discount-query.server.ts (suggestDiscounts)
+ *
+ * Search field with a typeahead dropdown. One code per offer. We auto-refresh
+ * the suggestion list when the merchant returns to the tab — they often hop
+ * over to Shopify admin to create a discount via the deep-link button below.
  */
-import { useCallback, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFetcher } from "react-router";
 
 import type { DiscountSuggestion } from "../lib/discount-query.server";
-import {
-  CreateNewDiscount,
-  type CreateNewDiscountResult,
-} from "./create-new-discount";
 
 export type CodePickerSuggestion = DiscountSuggestion;
 
 export type SelectedCode = {
   code: string;
   discountNodeId?: string;
-  isAppOwned?: boolean;
-  /**
-   * "existing" = we resolved it against Shopify and it already exists there.
-   * "manual-missing" = merchant typed a code we couldn't find; T33 creates it.
-   */
-  origin: "suggested" | "other" | "existing" | "manual-missing";
 };
 
 export type CodePickerProps = {
-  suggested: CodePickerSuggestion[];
-  other: CodePickerSuggestion[];
+  suggestions: CodePickerSuggestion[];
+  shopDomain: string;
+  initialValue?: SelectedCode | null;
   error?: string;
 };
 
-function toUpper(code: string): string {
-  return code.trim().toUpperCase();
-}
+const MAX_RESULTS = 8;
 
-function findSuggestionByCode(
-  list: CodePickerSuggestion[],
-  code: string,
-): CodePickerSuggestion | undefined {
-  const upper = toUpper(code);
-  return list.find((s) => s.codes.some((c) => toUpper(c) === upper));
+function toUpper(s: string) {
+  return s.trim().toUpperCase();
 }
 
 function describeSuggestion(s: CodePickerSuggestion): string {
@@ -49,193 +39,205 @@ function describeSuggestion(s: CodePickerSuggestion): string {
   return parts.join(" · ");
 }
 
-export function CodePicker({ suggested, other, error }: CodePickerProps) {
-  const [selected, setSelected] = useState<SelectedCode[]>([]);
-  const [manual, setManual] = useState("");
-  const [manualMissing, setManualMissing] = useState<string | null>(null);
+function filterSuggestions(
+  list: CodePickerSuggestion[],
+  search: string,
+): CodePickerSuggestion[] {
+  const upper = toUpper(search);
+  if (!upper) return list.slice(0, MAX_RESULTS);
+  return list
+    .filter(
+      (s) =>
+        s.codes.some((c) => toUpper(c).includes(upper)) ||
+        s.title.toUpperCase().includes(upper),
+    )
+    .slice(0, MAX_RESULTS);
+}
 
-  function isSelectedCode(upper: string): boolean {
-    return selected.some((s) => toUpper(s.code) === upper);
-  }
+type RefreshData = {
+  suggestions?: CodePickerSuggestion[];
+};
 
-  function addFromSuggestion(
-    s: CodePickerSuggestion,
-    origin: "suggested" | "other",
-  ) {
-    const next = [...selected];
-    for (const code of s.codes) {
-      if (isSelectedCode(toUpper(code))) continue;
-      next.push({
-        code,
-        discountNodeId: s.discountNodeId,
-        isAppOwned: false,
-        origin,
-      });
+export function CodePicker({
+  suggestions: initialSuggestions,
+  shopDomain,
+  initialValue,
+  error,
+}: CodePickerProps) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<SelectedCode | null>(
+    initialValue ?? null,
+  );
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refresh = useFetcher<RefreshData>();
+
+  // Re-query the merchant's discounts when they return to this tab (they
+  // often hop to Shopify admin to create a discount via the button below).
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        refresh.load("?_data=suggestions");
+      }
     }
-    setSelected(next);
-  }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh]);
 
-  function removeFromSuggestion(s: CodePickerSuggestion) {
-    const upperSet = new Set(s.codes.map(toUpper));
-    setSelected((cur) => cur.filter((c) => !upperSet.has(toUpper(c.code))));
-  }
+  const suggestions = refresh.data?.suggestions ?? initialSuggestions;
+  const filtered = filterSuggestions(suggestions, search);
+  const noMatch = search.trim().length > 0 && filtered.length === 0;
 
-  function isSuggestionChecked(s: CodePickerSuggestion): boolean {
-    return s.codes.every((c) => isSelectedCode(toUpper(c)));
-  }
-
-  function toggleSuggestion(
-    s: CodePickerSuggestion,
-    origin: "suggested" | "other",
-  ) {
-    if (isSuggestionChecked(s)) removeFromSuggestion(s);
-    else addFromSuggestion(s, origin);
-  }
-
-  function onAddManual() {
-    const code = manual.trim();
-    if (!code) return;
-    setManualMissing(null);
-    if (isSelectedCode(toUpper(code))) {
-      setManual("");
-      return;
-    }
-    const hitSuggested = findSuggestionByCode(suggested, code);
-    const hitOther = findSuggestionByCode(other, code);
-    const hit = hitSuggested ?? hitOther;
-    if (hit) {
-      addFromSuggestion(hit, hitSuggested ? "suggested" : "other");
-      setManual("");
-      return;
-    }
-    setManualMissing(code);
-  }
-
-  function removeSelected(upper: string) {
-    setSelected((cur) => cur.filter((s) => toUpper(s.code) !== upper));
-  }
-
-  const onCreatedManual = useCallback(
-    (result: CreateNewDiscountResult) => {
-      setSelected((cur) => {
-        const upper = toUpper(result.code);
-        if (cur.some((s) => toUpper(s.code) === upper)) return cur;
-        return [
-          ...cur,
-          {
-            code: result.code,
-            discountNodeId: result.discountNodeId,
-            isAppOwned: true,
-            origin: "manual-missing",
-          },
-        ];
-      });
-      setManualMissing(null);
-      setManual("");
-    },
-    [],
+  const newDiscountUrl = useMemo(
+    () => `https://admin.shopify.com/store/${shopDomain}/discounts/new`,
+    [shopDomain],
   );
 
+  function openDropdown() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpen(true);
+  }
+
+  // Delay close so dropdown clicks register before blur hides them.
+  function scheduleClose() {
+    closeTimer.current = setTimeout(() => setOpen(false), 150);
+  }
+
+  function pick(s: CodePickerSuggestion) {
+    const code = s.codes[0] ?? "";
+    setSelected({ code, discountNodeId: s.discountNodeId });
+    setSearch("");
+    setOpen(false);
+  }
+
+  function clear() {
+    setSelected(null);
+  }
+
+  if (selected) {
+    return (
+      <s-stack gap="small-300">
+        {error ? <s-banner tone="critical">{error}</s-banner> : null}
+        <input type="hidden" name="code" value={selected.code} />
+        <input
+          type="hidden"
+          name="discountNodeId"
+          value={selected.discountNodeId ?? ""}
+        />
+        <s-grid
+          gridTemplateColumns="1fr auto"
+          gap="small-300"
+          alignItems="center"
+        >
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-badge tone="info">{selected.code}</s-badge>
+          </s-stack>
+          <s-button
+            variant="tertiary"
+            icon="x"
+            accessibilityLabel={`Remove ${selected.code}`}
+            onClick={clear}
+          />
+        </s-grid>
+        <s-paragraph color="subdued">
+          One code per protected offer. Remove this one to pick a different
+          code.
+        </s-paragraph>
+      </s-stack>
+    );
+  }
+
   return (
-    <s-stack gap="base">
+    <s-stack gap="small-300">
       {error ? <s-banner tone="critical">{error}</s-banner> : null}
 
-      <s-section heading="Suggested codes">
-        {suggested.length === 0 ? (
-          <s-paragraph color="subdued">
-            No welcome-style discounts found in your store yet.
-          </s-paragraph>
-        ) : (
-          <s-stack gap="small-300">
-            {suggested.map((s) => (
-              <s-checkbox
-                key={s.discountNodeId}
-                name={`suggestion-${s.discountNodeId}`}
-                label={s.codes.join(", ")}
-                details={describeSuggestion(s)}
-                checked={isSuggestionChecked(s)}
-                onChange={() => toggleSuggestion(s, "suggested")}
-              />
-            ))}
-          </s-stack>
-        )}
-      </s-section>
-
-      <s-section heading="Other active discounts">
-        {other.length === 0 ? (
-          <s-paragraph color="subdued">
-            No other active discounts found.
-          </s-paragraph>
-        ) : (
-          <s-stack gap="small-300">
-            {other.map((s) => (
-              <s-checkbox
-                key={s.discountNodeId}
-                name={`suggestion-${s.discountNodeId}`}
-                label={s.codes.join(", ")}
-                details={describeSuggestion(s)}
-                checked={isSuggestionChecked(s)}
-                onChange={() => toggleSuggestion(s, "other")}
-              />
-            ))}
-          </s-stack>
-        )}
-      </s-section>
-
-      <s-section heading="Add a code manually">
-        <s-grid gridTemplateColumns="1fr auto" gap="small-300" alignItems="end">
-          <s-text-field
-            name="manual-code"
-            label="Discount code"
-            labelAccessibilityVisibility="exclusive"
-            placeholder="Enter a discount code"
-            value={manual}
-            onChange={(e) => setManual(e.currentTarget.value)}
-          />
-          <s-button variant="secondary" onClick={onAddManual}>
-            Add
-          </s-button>
-        </s-grid>
-
-        {manualMissing ? (
-          <CreateNewDiscount
-            code={manualMissing}
-            onCreated={onCreatedManual}
-            onCancel={() => setManualMissing(null)}
-          />
-        ) : null}
-      </s-section>
-
-      <s-section heading="Selected">
-        {selected.length === 0 ? (
-          <s-paragraph color="subdued">No codes selected yet.</s-paragraph>
-        ) : (
-          <s-stack direction="inline" gap="small-200" alignItems="center">
-            {selected.map((s) => (
-              <s-stack
-                key={toUpper(s.code)}
-                direction="inline"
-                gap="small-100"
-                alignItems="center"
-              >
-                <s-badge tone="info">{s.code}</s-badge>
-                <s-button
-                  variant="tertiary"
-                  icon="x"
-                  accessibilityLabel={`Remove ${s.code}`}
-                  onClick={() => removeSelected(toUpper(s.code))}
-                />
-              </s-stack>
-            ))}
-          </s-stack>
-        )}
-      </s-section>
-
-      <input
-        type="hidden"
-        name="selectedCodes"
-        value={JSON.stringify(selected)}
+      <s-text-field
+        label="Discount code"
+        labelAccessibilityVisibility="visible"
+        placeholder="Search your store's discount codes"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.currentTarget.value);
+          setOpen(true);
+        }}
+        onFocus={openDropdown}
+        onBlur={scheduleClose}
       />
+
+      {open && (filtered.length > 0 || noMatch) ? (
+        <div
+          style={{
+            background: "var(--s-color-bg-surface, #fff)",
+            border: "1px solid var(--s-color-border, #e0e0e0)",
+            borderRadius: "var(--s-border-radius-base, 4px)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+            maxHeight: "280px",
+            overflowY: "auto",
+          }}
+        >
+            {filtered.map((s) => (
+              <button
+                key={s.discountNodeId}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(s);
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "start",
+                  padding: "10px 14px",
+                  border: "none",
+                  background: "none",
+                  cursor: "pointer",
+                  borderBlockEnd:
+                    "1px solid var(--s-color-border-subdued, #f0f0f0)",
+                  fontSize: "inherit",
+                  fontFamily: "inherit",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "var(--s-color-bg-surface-hover, #f6f6f7)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background =
+                    "none";
+                }}
+              >
+                <div style={{ fontWeight: 500 }}>{s.codes.join(", ")}</div>
+                <div
+                  style={{
+                    fontSize: "0.85em",
+                    color: "var(--s-color-text-subdued, #6d7175)",
+                    marginBlockStart: "2px",
+                  }}
+                >
+                  {describeSuggestion(s)}
+                </div>
+              </button>
+            ))}
+
+            {noMatch ? (
+              <div style={{ padding: "10px 14px" }}>
+                <s-paragraph color="subdued">
+                  No code matches &quot;{search.trim()}&quot;. Create it in
+                  Shopify first using the button below.
+                </s-paragraph>
+              </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <s-paragraph color="subdued">
+        Don&apos;t see your code? Create the discount in Shopify, then come
+        back — the list refreshes automatically.
+      </s-paragraph>
+      <s-stack direction="inline" gap="small-300">
+        <s-button href={newDiscountUrl} target="_blank">
+          Create a discount in Shopify ↗
+        </s-button>
+      </s-stack>
     </s-stack>
   );
 }

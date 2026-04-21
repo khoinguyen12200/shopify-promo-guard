@@ -1,15 +1,4 @@
-# See: docs/function-queries-spec.md §3 (validator input query — Plan C)
-# Related: docs/function-queries-spec.md §9 (nullability + Plan C decision)
-#
-# Plan C: cart.discountCodes is NOT in the cart_checkout_validation input
-# schema for this api_version. We can't gate on the typed discount code at
-# function time; instead the Validation Function is attached to checkouts via
-# a merchant-configured Checkout Rule, and reads a single shop-wide shard
-# metafield (namespace: "$app", key: "shard_v1") containing pooled identity
-# hashes for every protected offer on the shop. $app is the app-reserved
-# namespace — Functions of the owning app can read/write it without extra
-# scope.
-query Input {
+query CartValidationsGenerateRunInput {
   cart {
     buyerIdentity {
       email
@@ -18,20 +7,17 @@ query Input {
         hasAnyTag(tags: ["promo-guard-redeemed"])
       }
     }
-
     deliveryGroups {
       deliveryAddress {
         address1
         address2
-        city
         zip
         countryCode
       }
     }
   }
-
   shop {
-    shard: metafield(namespace: "$app", key: "shard_v1") {
+    shard: metafield(namespace: "$app", key: "shard_v2") {
       jsonValue
     }
   }

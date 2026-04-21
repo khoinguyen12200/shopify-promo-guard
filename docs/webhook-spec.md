@@ -156,11 +156,11 @@ handle_orders_paid(shopId, payload):
        clientDetails: { browser_ip, ... },
      }
 
-  2. Find matching protected offers:
+  2. Find matching protected offers (one code per offer):
        codesInOrder = uppercase(set of payload.discount_codes[].code)
        offers = ProtectedOffer.find({
-         shopId, status: "active",
-         codes: { some: { codeUpper: { in: codesInOrder } } }
+         shopId, status: "active", archivedAt: null,
+         codeUpper: { in: codesInOrder }
        })
      If offers is empty → mark WebhookEvent processed, return. (Not our offer.)
 
@@ -403,7 +403,7 @@ compliance_shop_redact(shopId, requestId):
   Shop.delete({ id: shopId })
 
   // Our Shop row deletion cascades to:
-  //   ProtectedOffer → ProtectedCode, RedemptionRecord, FlaggedOrder, ShardState
+  //   ProtectedOffer → RedemptionRecord, FlaggedOrder, ShardState
   //   Job, WebhookEvent, AuditLog, ComplianceRequest
 
   // Can't delete Shopify-side metafields because we have no valid session after uninstall.
@@ -509,7 +509,7 @@ Needs a mock order payload with: `discount_codes: [{ code: "WELCOME10" }]`, an `
 
 | Not here | Where instead |
 |---|---|
-| Scoring at checkout | Validation / Discount Functions (Rust) |
+| Scoring at checkout | Validation Function (Rust) |
 | Sharding logic | `shard_append` / `shard_rebuild` jobs |
 | UI state updates | Admin UI Remix routes + React Query polling |
 | Customer notification | Out of scope for MVP |

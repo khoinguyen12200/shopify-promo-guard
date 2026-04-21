@@ -66,7 +66,7 @@ function ctx(overrides: Partial<{ shopId: string }> = {}) {
   };
 }
 
-function offerWithCodes(codes: string[], extra: Record<string, unknown> = {}) {
+function offerWithCode(code: string, extra: Record<string, unknown> = {}) {
   return {
     id: "offer-A",
     shopId: SHOP.id,
@@ -74,13 +74,9 @@ function offerWithCodes(codes: string[], extra: Record<string, unknown> = {}) {
     coldStartStatus: "pending",
     coldStartDone: 0,
     coldStartTotal: 0,
-    codes: codes.map((c, i) => ({
-      id: `pc-${i}`,
-      codeUpper: c.toUpperCase(),
-      code: c,
-      addedAt: new Date(),
-      archivedAt: null,
-    })),
+    code,
+    codeUpper: code.toUpperCase(),
+    discountNodeId: null,
     ...extra,
   };
 }
@@ -205,7 +201,7 @@ describe("handleColdStart — payload validation", () => {
 
   it("returns silently when offer is archived or belongs to another shop", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue({
-      ...offerWithCodes(["X"]),
+      ...offerWithCode("X"),
       archivedAt: new Date(),
     });
     await expect(
@@ -216,23 +212,9 @@ describe("handleColdStart — payload validation", () => {
 });
 
 describe("handleColdStart — happy path", () => {
-  it("marks complete + zero work when offer has no codes", async () => {
-    prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes([]),
-    );
-    await handleColdStart({ protectedOfferId: "offer-A" }, ctx());
-
-    // One update: status → complete. (No running bump, since we skip straight
-    // to complete when there's nothing to do.)
-    const updates = prismaMock.protectedOffer.update.mock.calls;
-    expect(updates.at(-1)?.[0].data.coldStartStatus).toBe("complete");
-    expect(unauthenticatedAdminMock).not.toHaveBeenCalled();
-    expect(enqueueJobMock).not.toHaveBeenCalled();
-  });
-
   it("paginates a single code, inserts records, enqueues shard_append per new row", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["welcome10"]),
+      offerWithCode("welcome10"),
     );
 
     const client = fakeAdminClient([
@@ -291,41 +273,9 @@ describe("handleColdStart — happy path", () => {
     expect(coldStartContinuations).toHaveLength(0);
   });
 
-  it("walks multiple codes in order, restarting cursor for each", async () => {
-    prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["a", "b"]),
-    );
-
-    const client = fakeAdminClient([
-      {
-        edges: [{ node: makeOrder({ id: "gid://shopify/Order/a1" }) }],
-        hasNextPage: false,
-        endCursor: null,
-      },
-      {
-        edges: [{ node: makeOrder({ id: "gid://shopify/Order/b1" }) }],
-        hasNextPage: false,
-        endCursor: null,
-      },
-    ]);
-    unauthenticatedAdminMock.mockResolvedValue({
-      admin: { graphql: client.graphql },
-      session: { id: "sess-2" },
-    });
-
-    await handleColdStart({ protectedOfferId: "offer-A" }, ctx());
-
-    expect(client.calls).toHaveLength(2);
-    expect(client.calls[0].query).toBe("discount_code:A");
-    expect(client.calls[1].query).toBe("discount_code:B");
-    // Both started with a null cursor (new code resets pagination).
-    expect(client.calls[0].cursor).toBeNull();
-    expect(client.calls[1].cursor).toBeNull();
-  });
-
   it("is idempotent: pre-existing RedemptionRecords are skipped", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["welcome10"]),
+      offerWithCode("welcome10"),
     );
     // Simulate the first order already present; the second fresh.
     prismaMock.redemptionRecord.findUnique.mockImplementation(
@@ -372,7 +322,7 @@ describe("handleColdStart — happy path", () => {
 describe("handleColdStart — continuation + throttle", () => {
   it("re-enqueues itself when MAX_PAGES_PER_RUN is reached", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["welcome10"]),
+      offerWithCode("welcome10"),
     );
 
     // Always hasNextPage=true → we'd loop forever without the page cap.
@@ -400,7 +350,6 @@ describe("handleColdStart — continuation + throttle", () => {
     expect(continuations).toHaveLength(1);
     const contArgs = continuations[0][0];
     expect(contArgs.payload.protectedOfferId).toBe("offer-A");
-    expect(contArgs.payload.codeIndex).toBe(0);
     // The cursor carried forward matches the last page we consumed.
     expect(contArgs.payload.cursor).toBe(
       `CURSOR_${MAX_PAGES_PER_RUN - 1}`,
@@ -413,14 +362,14 @@ describe("handleColdStart — continuation + throttle", () => {
     expect(statuses).not.toContain("complete");
   });
 
-  it("resumes from a checkpointed payload (codeIndex + cursor)", async () => {
+  it("resumes from a checkpointed cursor", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["a", "b"], { coldStartStatus: "running" }),
+      offerWithCode("welcome10", { coldStartStatus: "running" }),
     );
 
     const client = fakeAdminClient([
       {
-        edges: [{ node: makeOrder({ id: "gid://shopify/Order/b2" }) }],
+        edges: [{ node: makeOrder({ id: "gid://shopify/Order/late" }) }],
         hasNextPage: false,
         endCursor: null,
       },
@@ -433,16 +382,15 @@ describe("handleColdStart — continuation + throttle", () => {
     await handleColdStart(
       {
         protectedOfferId: "offer-A",
-        codeIndex: 1,
-        cursor: "CURSOR_B",
+        cursor: "CURSOR_RESUME",
       },
       ctx(),
     );
 
-    // We should skip code "a" entirely and resume on code "b" with the given cursor.
+    // Picks up the checkpointed cursor instead of starting from null.
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0].query).toBe("discount_code:B");
-    expect(client.calls[0].cursor).toBe("CURSOR_B");
+    expect(client.calls[0].query).toBe("discount_code:WELCOME10");
+    expect(client.calls[0].cursor).toBe("CURSOR_RESUME");
 
     // Running-already: no redundant status="running" write on entry.
     const statusWrites = prismaMock.protectedOffer.update.mock.calls
@@ -454,7 +402,7 @@ describe("handleColdStart — continuation + throttle", () => {
 
   it("throws ColdStartThrottledError on Shopify THROTTLED response", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["welcome10"]),
+      offerWithCode("welcome10"),
     );
     const client = fakeAdminClient([{ error: "throttled" }]);
     unauthenticatedAdminMock.mockResolvedValue({
@@ -477,7 +425,7 @@ describe("handleColdStart — continuation + throttle", () => {
 describe("handleColdStart — privacy invariants", () => {
   it("writes only ciphertext + hashes to RedemptionRecord, no raw email/phone/address/ip columns", async () => {
     prismaMock.protectedOffer.findUnique.mockResolvedValue(
-      offerWithCodes(["welcome10"]),
+      offerWithCode("welcome10"),
     );
     const client = fakeAdminClient([
       {

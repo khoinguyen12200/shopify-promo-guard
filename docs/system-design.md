@@ -9,9 +9,8 @@ Works on regular Shopify plans (Basic / Shopify / Advanced). Shopify Starter exc
 ## What the merchant does (whole setup)
 
 1. Install the app.
-2. Pick which discount codes to protect. Auto-suggested from the shop's existing discounts. Can also type a code manually (existing or brand-new).
-3. Pick the action: **silently don't apply** the discount, or **block checkout**.
-4. (Block mode only) Flip the switch in Shopify admin under **Settings > Checkout > Checkout Rules**.
+2. Pick a discount code to protect from a search-with-dropdown of the shop's existing Shopify discounts.
+3. Flip the switch in Shopify admin under **Settings > Checkout > Checkout Rules** to activate the validation function.
 
 No thresholds, no signal checkboxes, no strictness sliders.
 
@@ -19,11 +18,9 @@ No thresholds, no signal checkboxes, no strictness sliders.
 
 ## Core concept: protected offer
 
-A **protected offer** = a group of one or more discount codes treated as one welcome program, plus a mode (silent or block). A customer who redeems any code in the group can't redeem any of them again.
+A **protected offer** = one welcome-discount code plus a name. A customer who redeems the code can't redeem it again — the validation function blocks repeat checkouts when identity signals match a prior redemption.
 
-Example: `WELCOME10`, `WELCOME15`, `NEWBIE`, `FIRST20` → one "Welcome program" protected offer, one shared ledger.
-
-Most stores have one protected offer. Some have a few (per channel, per market).
+Most stores have one protected offer. Stores running multiple welcome campaigns create one protected offer per code (`WELCOME10`, `NEWBIE`, etc.). Each offer has its own ledger.
 
 ---
 
@@ -135,22 +132,22 @@ Each shard is a rolling-window of the most recent entries. When a new redemption
     - If score 4-9 → orderRiskAssessmentCreate MEDIUM + tag
         │
         ▼
-  Shop metafield  (one shop-wide shard: namespace="$app" key="shard_v1")
+  Shop metafield  (one shop-wide shard, per-offer buckets: namespace="$app" key="shard_v2")
 
 ──── checkout ─────────────────────────────────────────
 
-  Validation Function  OR  Discount Function
+  Validation Function (Cart & Checkout Validation)
     input query:
       cart.buyerIdentity.email, phone
       cart.deliveryGroups.deliveryAddress
       cart.customer.hasAnyTag(["promo-guard-redeemed"])
-      shop.metafield("$app", "shard_v1")   // combined parallel arrays
+      shop.metafield("$app", "shard_v2")   // per-offer hash buckets
     Rust logic:
       if no cart.discountCodes matches this offer's group → return allow
       normalize incoming signals
       compute exact hash + MinHash sketch
       scan 5 shards, sum weighted score
-      score ≥ 10 → validationAdd  /  return empty discount operations
+      score ≥ 10 → validationAdd error (block at checkout)
       else → allow (post-order will catch misses)
 ```
 
@@ -164,21 +161,22 @@ Shopify's docs warn: *"the orders/create webhook might not fire immediately. It'
 
 | # | Component | Type | Plan | Role |
 |---|---|---|---|---|
-| 1 | `promo-guard-validator` | Cart & Checkout Validation Function | All | Block mode: `validationAdd` error when score ≥ 10 |
-| 2 | `promo-guard-discount` | Discount Function | All | Silent-strip mode: return no operations when score ≥ 10 |
-| 3 | App backend (Remix) | — | — | Ledger, fingerprint builder, webhooks, admin pages |
-| 4 | `orders/paid` handler | Remix route | All | Write Prisma, update shards, tag customer, create risk assessment |
-| 5 | Shop metafields `pg_<offer>_*` (5 shards) | Shop metafields | All | Checkout-readable rolling-window index |
-| 6 | Prisma DB | App DB | — | Raw normalized signals, full history, post-order source of truth |
-| 7 | Admin UI (Remix pages) | App embed | All | Protected offers, create/edit, flagged orders |
-| 8 | Admin UI extension `admin.order-details.block.render` | Extension | All | Custom card on order detail for flagged orders |
+| 1 | `promo-guard-validator` | Cart & Checkout Validation Function | All | `validationAdd` error when score ≥ 10 (block at checkout) |
+| 2 | App backend (Remix) | — | — | Ledger, fingerprint builder, webhooks, admin pages |
+| 3 | `orders/paid` handler | Remix route | All | Write Prisma, update shards, tag customer, create risk assessment |
+| 4 | Shop metafields `pg_<offer>_*` (5 shards) | Shop metafields | All | Checkout-readable rolling-window index |
+| 5 | Prisma DB | App DB | — | Raw normalized signals, full history, post-order source of truth |
+| 6 | Admin UI (Remix pages) | App embed | All | Protected offers, create/edit, flagged orders |
+| 7 | Admin UI extension `admin.order-details.block.render` | Extension | All | Custom card on order detail for flagged orders |
+
+There used to be a `promo-guard-discount` (Discount Function) component for "silent strip" mode, where the function would return no operations to silently skip applying the discount. We removed it: the discount-function execution context couldn't reliably detect abuse with the same signal coverage as the validation function. Block mode is the only enforcement path now.
 
 ### Required OAuth scopes
 
 ```
 read_orders, write_orders            ← webhooks + risk assessment + tags
 read_customers, write_customers      ← customer tag on redemption
-read_discounts, write_discounts      ← read existing, create/replace app-owned discounts
+read_discounts                       ← list discount codes for the create-offer picker
 read_metafields, write_metafields    ← sharded ledger
 ```
 
@@ -216,45 +214,40 @@ Plus **protected customer data** approval (levels 1 + 2) for email/phone/address
 └──────────────────────────────────────────────────────┘
 ```
 
-### Create protected offer — smart code picker
+### Create protected offer — search-with-dropdown picker
 
-Three ways to choose codes, combined in one form:
+One code per offer. The merchant types into a search field; matching codes from the shop's existing Shopify discounts appear in a dropdown.
 
 ```
 ┌─ New protected offer ─────────────────────────────────┐
 │                                                        │
-│  Which codes count as this welcome offer?             │
+│  Which code does this welcome offer protect?          │
 │                                                        │
-│  ── Suggested (one-time per customer) ──              │
-│  ☑ WELCOME10     10% off · once per customer · active │
-│  ☑ NEWBIE        Free shipping · once per customer    │
-│  ☐ FIRST20       $20 off · once per customer          │
+│  Discount code                                         │
+│  [ welcome                                       🔍 ]  │
+│  ┌───────────────────────────────────────────────┐    │
+│  │ WELCOME10                                     │    │
+│  │ 10% off · once per customer · active          │    │
+│  ├───────────────────────────────────────────────┤    │
+│  │ WELCOMEBACK                                   │    │
+│  │ 15% off · scheduled                           │    │
+│  └───────────────────────────────────────────────┘    │
 │                                                        │
-│  ── Other codes with "welcome-ish" names ──           │
-│  ☐ WELCOME15     15% off · no per-customer limit      │
-│  ☐ SIGNUP5       $5 off · active                      │
-│                                                        │
-│  ── Type a code manually ──                           │
-│  [ WELCOMEBACK              ]  [+ Add]                │
-│  ⓘ We'll find it if it exists, or help you create it │
-│                                                        │
-│  Selected: [ WELCOME10 ×] [ NEWBIE ×] [ WELCOMEBACK ×]│
-│                                                        │
-│  ── What happens when someone reuses it? ──           │
-│  (•) Silently don't apply the discount                │
-│  ( ) Block their checkout                              │
+│  Don't see your code? Create it in Shopify, then      │
+│  come back — the list refreshes automatically.        │
+│  [ Create a discount in Shopify ↗ ]                    │
 │                                                        │
 │                      [ Cancel ]  [ Protect → ]        │
 └────────────────────────────────────────────────────────┘
 ```
 
-### Auto-suggest logic
+### Suggestion ranking
 
-When the form loads, query the shop's existing discounts and rank them:
+When the form loads, query the shop's existing discounts and rank them so the most likely welcome-style codes appear first in the dropdown:
 
-1. **Top section — "Suggested"**: discounts with `appliesOncePerCustomer: true` (the strongest signal of a welcome-style discount). Sorted by most-recently active first.
-2. **Second section — "Other"**: discounts whose title or code contains `welcome|first|new|signup|sample`, not already in section 1.
-3. **Always visible — manual entry**: free-text input.
+1. Discounts with `appliesOncePerCustomer: true` first.
+2. Within that, prefer titles/codes matching `welcome|first|new|signup|intro`.
+3. Tiebreak by most-recently-created.
 
 Query used:
 
@@ -281,41 +274,11 @@ codeDiscountNodes(first: 50, sortKey: CREATED_AT, reverse: true) {
 
 We include **past** codes too (not just active) so historical codes like `WELCOME15` from a past campaign can be added to the ledger via backfill.
 
-### Manual code entry
+### Where the code comes from
 
-When the merchant types a code:
+We never create or modify discount codes ourselves — if the code the merchant wants doesn't exist, they create it in Shopify via the deep-link button, then return to our tab and the picker auto-refreshes (`visibilitychange` listener).
 
-- **We find a match** → show its details (amount, status, limit), add to the selected list.
-- **No match found** → offer to create it: "No code called `WELCOMEBACK` exists. Create a new one through Promo Guard?" → opens an inline sub-form for amount / percent / dates / limits. We'll register it via `discountCodeAppCreate` with our Discount Function.
-
-### Silent-strip with existing code → replace-in-place
-
-If the merchant picks an existing native discount and chooses silent-strip, we show:
-
-```
-┌─ Replace your existing discount? ────────────────┐
-│                                                   │
-│  To silently skip the discount for abusers, we    │
-│  need to replace WELCOME10 with a protected       │
-│  version.                                         │
-│                                                   │
-│   ✓ Code stays "WELCOME10" — links keep working   │
-│   ✓ Amount, minimum, dates, limits all copied     │
-│   ✓ Old discount is archived (history kept)       │
-│   ⚠ Analytics for WELCOME10 start fresh          │
-│                                                   │
-│              [ Cancel ]  [ Replace & protect → ] │
-└───────────────────────────────────────────────────┘
-```
-
-On confirm:
-
-1. Read the old discount's full config via `codeDiscountNodeByCode`.
-2. **Deactivate the old discount first** via `discountCodeDeactivate` (required — Shopify errors with "must be unique" otherwise).
-3. `discountCodeAppCreate` with the same code string + copied config + our Discount Function ID.
-4. Archive reference is stored in Prisma so we can restore on uninstall.
-
-Block mode doesn't require replacement — we just attach the Validation Function to watch the code(s).
+The validation function is the only enforcement path. We attach it to the protected code; the merchant's Shopify discount stays untouched.
 
 ### Offer detail page
 
@@ -399,12 +362,10 @@ The `discount_code:X` filter is confirmed available on the GraphQL Admin orders 
 3. Normalization + MinHash library (shared spec between Node and Rust).
 4. `orders/paid` handler — Prisma write, shard update, customer tag, authoritative scoring, risk assessment.
 5. Validation Function (Rust) — reads 5 metafield shards, computes score, returns error on ≥ 10.
-6. Discount Function (Rust) — same scoring, returns empty operations instead.
-7. Admin UI: protected-offers list, create form with auto-suggest + manual entry + create-new sub-form.
-8. Replace-in-place flow with deactivate-first ordering.
-9. Admin UI: flagged orders page + admin block on order detail.
-10. Cold-start backfill job with progress indicator.
-11. Submit for protected customer data approval (levels 1 + 2).
+6. Admin UI: protected-offers list, create form with auto-suggest checkbox picker + Shopify deep-link.
+7. Admin UI: flagged orders page + admin block on order detail.
+8. Cold-start backfill job with progress indicator.
+9. Submit for protected customer data approval (levels 1 + 2).
 
 ---
 

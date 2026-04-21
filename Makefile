@@ -11,8 +11,8 @@ SHELL := /bin/bash
 DEV_DB_URL  := postgresql://promo:promo@localhost:5434/promo_guard
 DEV_DB_NAME := promo-guard-db
 
-# Rust function extensions — anything we must cargo-build
-RUST_EXTENSIONS := promo-guard-validator promo-guard-discount
+# JS function extensions — built via Shopify CLI (Javy → wasm).
+JS_FUNCTION_EXTENSIONS := promo-guard-validator
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Help
@@ -57,7 +57,7 @@ build: build-remix build-functions build-extensions ## Production build of every
 	@echo "✅ Build complete."
 
 .PHONY: test
-test: test-node test-rust test-fixture-parity ## Run all tests
+test: test-node test-functions ## Run all tests
 	@echo "✅ All tests passed."
 
 .PHONY: verify
@@ -67,8 +67,8 @@ verify: lint typecheck test ## What CI runs on every PR
 .PHONY: clean
 clean: db-down ## Remove generated artifacts and stop docker
 	rm -rf build/ public/build/ node_modules/.cache/
-	@for ext in $(RUST_EXTENSIONS); do \
-		(cd extensions/$$ext && cargo clean) 2>/dev/null || true; \
+	@for ext in $(JS_FUNCTION_EXTENSIONS); do \
+		rm -rf extensions/$$ext/dist 2>/dev/null || true; \
 	done
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -82,8 +82,6 @@ check-prereqs: ## Verify required tools are installed
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker missing — install Docker Desktop"; exit 1; }
 	@command -v shopify >/dev/null 2>&1 || { echo "❌ shopify CLI missing — npm i -g @shopify/cli@latest"; exit 1; }
 	@command -v cloudflared >/dev/null 2>&1 || { echo "❌ cloudflared missing — brew install cloudflared (avoids Shopify CLI fetching it over flaky GitHub releases)"; exit 1; }
-	@command -v cargo >/dev/null 2>&1 || { echo "❌ cargo missing — install via rustup (https://rustup.rs)"; exit 1; }
-	@rustup target list --installed 2>/dev/null | grep -q wasm32-unknown-unknown || { echo "❌ wasm32-unknown-unknown target missing — run: rustup target add wasm32-unknown-unknown"; exit 1; }
 	@node -e "const v=process.versions.node.split('.').map(Number); if(v[0]<20){process.exit(1)}" || { echo "❌ Node 20+ required, got $$(node -v)"; exit 1; }
 	@echo "✅ prereqs OK"
 
@@ -92,14 +90,8 @@ check-prereqs: ## Verify required tools are installed
 # ──────────────────────────────────────────────────────────────────────────────
 
 .PHONY: install
-install: ## Install Node deps (top-level) and fetch Rust deps
+install: ## Install Node deps (top-level + workspaces)
 	npm install
-	@for ext in $(RUST_EXTENSIONS); do \
-		if [ -d extensions/$$ext ]; then \
-			echo "→ cargo fetch ($$ext)"; \
-			(cd extensions/$$ext && cargo fetch); \
-		fi; \
-	done
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Database (local dev — docker-compose)
@@ -152,12 +144,12 @@ seed: ## Seed the dev DB with a fake shop + sample data (idempotent)
 	fi
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Shopify Functions (Rust)
+# Shopify Functions (TypeScript)
 # ──────────────────────────────────────────────────────────────────────────────
 
 .PHONY: functions-schema
 functions-schema: ## Download the latest Function schemas (Shopify → schema.graphql per extension)
-	@for ext in $(RUST_EXTENSIONS); do \
+	@for ext in $(JS_FUNCTION_EXTENSIONS); do \
 		if [ -d extensions/$$ext ]; then \
 			echo "→ schema for $$ext"; \
 			(cd extensions/$$ext && shopify app function schema --stdout > schema.graphql); \
@@ -165,11 +157,11 @@ functions-schema: ## Download the latest Function schemas (Shopify → schema.gr
 	done
 
 .PHONY: build-functions
-build-functions: ## Build all Rust function extensions to wasm
-	@for ext in $(RUST_EXTENSIONS); do \
+build-functions: ## Build all JS function extensions to wasm (via Javy)
+	@for ext in $(JS_FUNCTION_EXTENSIONS); do \
 		if [ -d extensions/$$ext ]; then \
 			echo "→ building $$ext"; \
-			(cd extensions/$$ext && shopify app function build); \
+			(cd extensions/$$ext && npm run build); \
 		fi; \
 	done
 	@$(MAKE) functions-verify-size
@@ -177,7 +169,7 @@ build-functions: ## Build all Rust function extensions to wasm
 .PHONY: functions-verify-size
 functions-verify-size: ## Verify each .wasm is under the 256 KB Shopify limit
 	@ok=1; \
-	for ext in $(RUST_EXTENSIONS); do \
+	for ext in $(JS_FUNCTION_EXTENSIONS); do \
 		wasm=$$(find extensions/$$ext -name "*.wasm" -type f 2>/dev/null | head -1); \
 		if [ -n "$$wasm" ]; then \
 			size=$$(wc -c < "$$wasm"); \
@@ -200,7 +192,7 @@ build-remix: db-generate ## Build Remix app for production
 	npm run build
 
 .PHONY: build-extensions
-build-extensions: ## Build non-Rust extensions (Admin UI extension)
+build-extensions: ## Build non-Function extensions (Admin UI extension)
 	@# Shopify CLI builds UI extensions as part of `shopify app deploy`. For local
 	@# artifact verification we can run `shopify app build`.
 	shopify app build 2>/dev/null || echo "⚠  shopify app build not yet applicable (scaffold extensions first)."
@@ -212,11 +204,6 @@ build-extensions: ## Build non-Rust extensions (Admin UI extension)
 .PHONY: lint
 lint: ## Run linters
 	npm run lint
-	@for ext in $(RUST_EXTENSIONS); do \
-		if [ -d extensions/$$ext ]; then \
-			(cd extensions/$$ext && cargo clippy --target=wasm32-unknown-unknown -- -D warnings) || exit 1; \
-		fi; \
-	done
 
 .PHONY: typecheck
 typecheck: db-generate ## Typecheck TypeScript
@@ -224,30 +211,16 @@ typecheck: db-generate ## Typecheck TypeScript
 
 .PHONY: test-node
 test-node: db-generate ## Run Node tests (Vitest)
-	npm test
+	npx vitest run --config ./vitest.config.ts
 
-.PHONY: test-rust
-test-rust: ## Run Rust tests
-	@for ext in $(RUST_EXTENSIONS); do \
+.PHONY: test-functions
+test-functions: ## Run JS function extension unit tests
+	@for ext in $(JS_FUNCTION_EXTENSIONS); do \
 		if [ -d extensions/$$ext ]; then \
-			echo "→ cargo test ($$ext)"; \
-			(cd extensions/$$ext && cargo test) || exit 1; \
+			echo "→ test ($$ext)"; \
+			(cd extensions/$$ext && npm test -- --run) || exit 1; \
 		fi; \
 	done
-	@if [ -d shared-rust ]; then \
-		(cd shared-rust && cargo test) || exit 1; \
-	fi
-
-.PHONY: test-fixture-parity
-test-fixture-parity: ## Verify Node and Rust produce identical output on docs/test-fixtures/hash-vectors.json
-	@if [ ! -f docs/test-fixtures/hash-vectors.json ]; then \
-		echo "⚠  fixture file not yet created (task T06) — skipping parity test."; \
-	else \
-		echo "→ Node fixture check"; \
-		DATABASE_URL="$(DEV_DB_URL)" npx tsx scripts/verify-fixtures.ts || exit 1; \
-		echo "→ Rust fixture check"; \
-		(cd shared-rust && cargo test --test fixture_vectors) || exit 1; \
-	fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Deploy

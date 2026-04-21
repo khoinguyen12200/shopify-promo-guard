@@ -17,7 +17,7 @@ const {
 } = vi.hoisted(() => ({
   prismaMock: {
     shop: { findUnique: vi.fn() },
-    protectedCode: { findMany: vi.fn() },
+    protectedOffer: { findMany: vi.fn() },
     redemptionRecord: { create: vi.fn() },
     flaggedOrder: { create: vi.fn() },
   },
@@ -134,8 +134,8 @@ describe("handleOrdersPaid", () => {
     await expect(handleOrdersPaid({}, ctx)).rejects.toThrow(/orders_paid/);
   });
 
-  it("no-ops when no codes match a ProtectedCode", async () => {
-    prismaMock.protectedCode.findMany.mockResolvedValue([]);
+  it("no-ops when no codes match a protected offer", async () => {
+    prismaMock.protectedOffer.findMany.mockResolvedValue([]);
     await handleOrdersPaid(basePayload(), ctx);
     expect(prismaMock.redemptionRecord.create).not.toHaveBeenCalled();
     expect(prismaMock.flaggedOrder.create).not.toHaveBeenCalled();
@@ -144,12 +144,12 @@ describe("handleOrdersPaid", () => {
   });
 
   it("inserts RedemptionRecord + enqueues shard_append (no flag) for new buyer", async () => {
-    prismaMock.protectedCode.findMany.mockResolvedValue([
+    prismaMock.protectedOffer.findMany.mockResolvedValue([
       {
-        id: "pc-1",
-        protectedOfferId: "offer-A",
+        id: "offer-A",
+        shopId: "shop-1",
+        code: "WELCOME10",
         codeUpper: "WELCOME10",
-        protectedOffer: { id: "offer-A", shopId: "shop-1" },
       },
     ]);
     scorePostOrderMock.mockResolvedValue({
@@ -191,12 +191,12 @@ describe("handleOrdersPaid", () => {
   });
 
   it("flags + creates risk assessment + tags order on prior-match buyer", async () => {
-    prismaMock.protectedCode.findMany.mockResolvedValue([
+    prismaMock.protectedOffer.findMany.mockResolvedValue([
       {
-        id: "pc-1",
-        protectedOfferId: "offer-A",
+        id: "offer-A",
+        shopId: "shop-1",
+        code: "WELCOME10",
         codeUpper: "WELCOME10",
-        protectedOffer: { id: "offer-A", shopId: "shop-1" },
       },
     ]);
     scorePostOrderMock.mockResolvedValue({
@@ -243,12 +243,12 @@ describe("handleOrdersPaid", () => {
   });
 
   it("uses MEDIUM risk level for review decisions", async () => {
-    prismaMock.protectedCode.findMany.mockResolvedValue([
+    prismaMock.protectedOffer.findMany.mockResolvedValue([
       {
-        id: "pc-1",
-        protectedOfferId: "offer-A",
+        id: "offer-A",
+        shopId: "shop-1",
+        code: "WELCOME10",
         codeUpper: "WELCOME10",
-        protectedOffer: { id: "offer-A", shopId: "shop-1" },
       },
     ]);
     scorePostOrderMock.mockResolvedValue({

@@ -1,22 +1,25 @@
 /**
- * See: docs/admin-ui-spec.md §6 (Delete confirmation — with restore option)
+ * See: docs/admin-ui-spec.md §6 (Delete confirmation)
  * Standard: docs/polaris-standards.md §2 (inlineSize="small" for focused flows),
  *           §14 (form wraps s-page, primary-action slot)
  * Related: app/lib/offer-service.server.ts (deleteOffer)
  */
-import type { ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "react-router";
+import type {
+  ActionFunctionArgs,
+  LoaderFunctionArgs,
+  HeadersFunction,
+} from "react-router";
 import {
   Form,
   redirect,
   useActionData,
   useLoaderData,
 } from "react-router";
-import { useState } from "react";
 
 import prisma from "~/db.server";
 import { deleteOffer } from "~/lib/offer-service.server";
-import { ShopifyUserError } from "~/lib/admin-graphql.server";
 import { requireReadOnly } from "~/lib/admin-impersonation.server";
+import { resolveShopGid } from "~/lib/shop.server";
 import { authenticate } from "~/shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -32,26 +35,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const offer = await prisma.protectedOffer.findFirst({
     where: { id, shopId: shop.id, archivedAt: null },
-    select: {
-      id: true,
-      name: true,
-      codes: {
-        where: { archivedAt: null },
-        select: {
-          id: true,
-          code: true,
-          replacedDiscountNodeId: true,
-        },
-      },
-    },
+    select: { id: true, name: true, code: true },
   });
   if (!offer) throw new Response("Offer not found", { status: 404 });
 
-  const replacedCodes = offer.codes
-    .filter((c) => c.replacedDiscountNodeId)
-    .map((c) => c.code);
-
-  return { offer, replacedCodes };
+  return { offer };
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -65,25 +53,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
   if (!shop) throw new Response("Shop not found", { status: 404 });
 
-  const form = await request.formData();
-  const choice = String(form.get("choice") ?? "");
-  if (choice !== "restore" && choice !== "delete") {
-    return { error: "Pick whether to restore your original discount or delete it entirely." };
-  }
-
   try {
-    await deleteOffer(admin.graphql, {
+    const shopGid = await resolveShopGid(shop, admin);
+    await deleteOffer({
+      client: admin.graphql,
+      shop: {
+        id: shop.id,
+        shopDomain: shop.shopDomain,
+        shopGid,
+        saltHex: shop.salt,
+      },
       offerId: id,
-      shopId: shop.id,
-      restoreReplaced: choice === "restore",
     });
   } catch (err) {
     const message =
-      err instanceof ShopifyUserError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : "Could not delete the offer.";
+      err instanceof Error ? err.message : "Could not delete the offer.";
     return { error: message };
   }
 
@@ -91,16 +75,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function DeleteOffer() {
-  const { offer, replacedCodes } = useLoaderData<typeof loader>();
+  const { offer } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
-  const hasReplaced = replacedCodes.length > 0;
   const cancelHref = `/app/offers/${offer.id}`;
-
-  // Pre-select "restore" when the offer replaced native discounts — that's
-  // the safer default per spec §6 (links in emails keep working).
-  const [choice, setChoice] = useState<"restore" | "delete">(
-    hasReplaced ? "restore" : "delete",
-  );
 
   return (
     <Form method="post">
@@ -126,52 +103,15 @@ export default function DeleteOffer() {
 
         <s-section heading="Confirm deletion">
           <s-stack gap="base">
-            {hasReplaced ? (
-              <s-paragraph>
-                <s-text type="strong">{offer.name}</s-text> uses{" "}
-                {replacedCodes.length}{" "}
-                {replacedCodes.length === 1 ? "discount" : "discounts"} that we
-                created for you ({replacedCodes.join(", ")}).
-              </s-paragraph>
-            ) : (
-              <s-paragraph>
-                Deleting <s-text type="strong">{offer.name}</s-text> will stop
-                the protection on {offer.codes.length}{" "}
-                {offer.codes.length === 1 ? "code" : "codes"}.
-              </s-paragraph>
-            )}
+            <s-paragraph>
+              The protected offer will be removed from Promo Guard.
+            </s-paragraph>
+            <s-paragraph color="subdued">
+              Your discount code in Shopify ({offer.code}) is not affected —
+              abusers will be able to redeem it again.
+            </s-paragraph>
           </s-stack>
         </s-section>
-
-        {hasReplaced ? (
-          <s-section heading="What should happen to your original discount?">
-            <s-grid gap="small-300">
-              <s-choice-list
-                name="choice"
-                label="Restore or delete"
-                labelAccessibilityVisibility="exclusive"
-                values={[choice]}
-                onChange={(e) => {
-                  const value = (e.target as HTMLInputElement | null)?.value;
-                  if (value === "restore" || value === "delete")
-                    setChoice(value);
-                }}
-              >
-                <s-choice value="restore">
-                  Restore the original {replacedCodes.join(", ")}
-                </s-choice>
-                <s-choice value="delete">Delete the codes entirely</s-choice>
-              </s-choice-list>
-              <s-paragraph color="subdued">
-                {choice === "restore"
-                  ? "The unprotected, native Shopify versions from before take over."
-                  : "Any links or emails using these codes will stop working."}
-              </s-paragraph>
-            </s-grid>
-          </s-section>
-        ) : (
-          <input type="hidden" name="choice" value="delete" />
-        )}
       </s-page>
     </Form>
   );

@@ -50,7 +50,12 @@ describe("handleComplianceDataExport", () => {
     kek.fill(0);
 
     const offer = await prisma.protectedOffer.create({
-      data: { shopId: shop.id, name: "Welcome", mode: "monitor" },
+      data: {
+        shopId: shop.id,
+        name: "Welcome",
+        code: "welcome10",
+        codeUpper: "WELCOME10",
+      },
     });
 
     const customerGid = "gid://shopify/Customer/123456";

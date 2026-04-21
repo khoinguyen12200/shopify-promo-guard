@@ -18,27 +18,23 @@ type OfferRow = {
   id: string;
   name: string;
   status: string;
-  mode: string;
   validationFunctionActivated: boolean;
-  codeCount: number;
+  code: string;
   redemptions: number;
   flagged: number;
 };
 
 function statusBadge(offer: {
   status: string;
-  mode: string;
   validationFunctionActivated: boolean;
 }): { tone: "success" | "warning" | "neutral" | "info"; label: string } {
-  if (
-    offer.status === "active" &&
-    offer.mode === "block" &&
-    !offer.validationFunctionActivated
-  ) {
-    return { tone: "warning", label: "Needs activation" };
+  if (offer.status === "active" && !offer.validationFunctionActivated) {
+    return { tone: "warning", label: "Activation pending" };
   }
   if (offer.status === "active") return { tone: "success", label: "Active" };
-  if (offer.status === "paused") return { tone: "neutral", label: "Paused" };
+  if (offer.status === "inactive") {
+    return { tone: "neutral", label: "Inactive" };
+  }
   return { tone: "info", label: "Draft" };
 }
 
@@ -52,7 +48,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
   const offers = await prisma.protectedOffer.findMany({
     where: { shopId: shop.id, archivedAt: null },
-    include: { _count: { select: { codes: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -105,20 +100,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     id: o.id,
     name: o.name,
     status: o.status,
-    mode: o.mode,
     validationFunctionActivated: o.validationFunctionActivated,
-    codeCount: o._count.codes,
+    code: o.code,
     redemptions: redemptionsByOffer.get(o.id) ?? 0,
     flagged: flaggedByOffer.get(o.id) ?? 0,
   }));
 
   const nudges: ActivationNudgeOffer[] = offers
-    .filter(
-      (o) =>
-        o.status === "active" &&
-        o.mode === "block" &&
-        !o.validationFunctionActivated,
-    )
+    .filter((o) => o.status === "active" && !o.validationFunctionActivated)
     .map((o) => ({ id: o.id, name: o.name, shopDomain: session.shop }));
 
   return { rows, nudges, pendingFlaggedCount };
@@ -172,7 +161,7 @@ export default function OffersIndex() {
             <s-table-header-row>
               <s-table-header listSlot="primary">Name</s-table-header>
               <s-table-header listSlot="secondary">Status</s-table-header>
-              <s-table-header format="numeric">Codes</s-table-header>
+              <s-table-header>Code</s-table-header>
               <s-table-header format="numeric">
                 Redemptions (30d)
               </s-table-header>
@@ -190,7 +179,7 @@ export default function OffersIndex() {
                       <s-badge tone={badge.tone}>{badge.label}</s-badge>
                     </s-table-cell>
                     <s-table-cell>
-                      {r.codeCount.toLocaleString()}
+                      <s-badge tone="info">{r.code}</s-badge>
                     </s-table-cell>
                     <s-table-cell>
                       {r.redemptions.toLocaleString()}

@@ -140,30 +140,23 @@ export const handleOrdersPaid: JobHandler<unknown> = async (payload, ctx) => {
   );
   if (codesUpper.length === 0 || !oid) return;
 
-  // 2. Find protected codes for this shop matching ANY of those codes.
-  const matchedCodes = await prisma.protectedCode.findMany({
+  // 2. Find protected offers for this shop matching ANY of those codes.
+  const matchedOffers = await prisma.protectedOffer.findMany({
     where: {
+      shopId: shop.id,
+      status: "active",
+      archivedAt: null,
       codeUpper: { in: codesUpper },
-      protectedOffer: { shopId: shop.id, status: "active" },
     },
-    include: { protectedOffer: true },
   });
-  if (matchedCodes.length === 0) return;
+  if (matchedOffers.length === 0) return;
 
-  // De-duplicate by offer (a single order should produce one
-  // RedemptionRecord per offer even if it used multiple codes from the same
-  // offer). Keep the first matching code for the codeUsed column.
   const byOffer = new Map<
     string,
-    { codeUsed: string; offer: (typeof matchedCodes)[number]["protectedOffer"] }
+    { codeUsed: string; offer: (typeof matchedOffers)[number] }
   >();
-  for (const m of matchedCodes) {
-    if (!byOffer.has(m.protectedOfferId)) {
-      byOffer.set(m.protectedOfferId, {
-        codeUsed: m.codeUpper,
-        offer: m.protectedOffer,
-      });
-    }
+  for (const offer of matchedOffers) {
+    byOffer.set(offer.id, { codeUsed: offer.codeUpper, offer });
   }
 
   // 3. Open admin client + decrypt DEK once for the duration of this handler.
@@ -173,11 +166,12 @@ export const handleOrdersPaid: JobHandler<unknown> = async (payload, ctx) => {
   const dek = unwrapDek(shop.encryptionKey, kek);
 
   try {
-    for (const [protectedOfferId, { codeUsed }] of byOffer) {
+    for (const [protectedOfferId, { codeUsed, offer }] of byOffer) {
       await processOfferMatch({
         shop,
         protectedOfferId,
         codeUsed,
+        offerMode: offer.mode === "watch" ? "watch" : "block",
         order,
         oid,
         oname,
@@ -195,6 +189,7 @@ interface ProcessArgs {
   shop: Shop;
   protectedOfferId: string;
   codeUsed: string;
+  offerMode: "block" | "watch";
   order: OrderJson;
   oid: string;
   oname: string;
@@ -254,18 +249,12 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
       )
     : undefined;
 
-  // Billing: only pass when billing differs from primary (§ billing slot).
-  const billingFullKeyStr = billingAddrRaw
-    ? fullKey({
-        line1: billingAddrRaw.address1 ?? "",
-        line2: billingAddrRaw.address2 ?? "",
-        zip: billingAddrRaw.zip ?? "",
-        countryCode: billingAddrRaw.country_code ?? "",
-      })
-    : "";
-  const billingDiffers =
-    billingAddrRaw != null && billingFullKeyStr !== fullKeyStr;
-  const billingAddrForStorage = billingDiffers ? billingAddrRaw : null;
+  // Billing: always hash + store when present, even when it equals shipping.
+  // The earlier dedup shaved ~20 bytes but created a detection gap (repeat
+  // abuser reusing the same billing card on a new shipping address wouldn't
+  // match on address at all).
+  const hasBilling = billingAddrRaw != null;
+  const billingAddrForStorage = hasBilling ? billingAddrRaw : null;
 
   // ---- Score (also computes hashes we'll persist) -----------------------
   const scoreResult = await scorePostOrder({
@@ -278,16 +267,16 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
       addressLine2,
       addressZip,
       addressCountry,
-      billingAddressLine1: billingDiffers
+      billingAddressLine1: hasBilling
         ? (billingAddrRaw?.address1 ?? "")
         : undefined,
-      billingAddressLine2: billingDiffers
+      billingAddressLine2: hasBilling
         ? (billingAddrRaw?.address2 ?? "")
         : undefined,
-      billingAddressZip: billingDiffers
+      billingAddressZip: hasBilling
         ? (billingAddrRaw?.zip ?? "")
         : undefined,
-      billingAddressCountry: billingDiffers
+      billingAddressCountry: hasBilling
         ? (billingAddrRaw?.country_code ?? "")
         : undefined,
       ip,
@@ -414,7 +403,9 @@ async function processOfferMatch(args: ProcessArgs): Promise<void> {
       shopGid: args.shopGid,
       saltHex: shop.salt,
       defaultCountryCc: null,
+      bucketMode: args.offerMode,
       entry: {
+        protectedOfferId: args.protectedOfferId,
         ts: Math.floor(newRecord.createdAt.getTime() / 1000),
         phone: hashes["phone"] ?? "",
         email: hashes["email_canonical"] ?? "",

@@ -10,7 +10,11 @@
  */
 
 import type { JobHandler } from "../lib/jobs.server.js";
-import { appendEntry, type ShardEntry } from "../lib/shards.server.js";
+import {
+  appendEntry,
+  type OfferMode,
+  type ShardEntry,
+} from "../lib/shards.server.js";
 import { unauthenticated } from "../shopify.server.js";
 
 export interface ShardAppendPayload {
@@ -20,6 +24,8 @@ export interface ShardAppendPayload {
   saltHex?: string;
   /** Default country code for E.164 normalization inside the Function. */
   defaultCountryCc?: string | null;
+  /** Mode to stamp on the offer's bucket if it doesn't exist yet. */
+  bucketMode?: OfferMode;
   entry: ShardEntry;
 }
 
@@ -47,6 +53,7 @@ export const handleShardAppend: JobHandler<unknown> = async (payload) => {
     {
       saltHex: payload.saltHex ?? "",
       defaultCountryCc: payload.defaultCountryCc ?? null,
+      bucketMode: payload.bucketMode ?? "block",
     },
   );
 };

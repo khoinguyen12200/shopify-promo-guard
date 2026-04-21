@@ -185,6 +185,7 @@ function rehashOne(
       : undefined;
 
   const entry: ShardEntry = {
+    protectedOfferId: record.protectedOfferId,
     ts: Math.floor(record.createdAt.getTime() / 1000),
     phone: phoneHash,
     email: emailCanonicalHash,
@@ -269,20 +270,36 @@ export const handleRotateSalt: JobHandler<unknown> = async (payload, ctx) => {
       where: { shopId: shop.id },
     });
 
+    // Per-offer modes for bucket creation; unknown offers default to block.
+    const offers = await prisma.protectedOffer.findMany({
+      where: { shopId: shop.id, archivedAt: null },
+      select: { id: true, mode: true },
+    });
+    const modeByOffer = new Map<string, "block" | "watch">();
+    for (const o of offers) {
+      modeByOffer.set(o.id, o.mode === "watch" ? "watch" : "block");
+    }
+
     let shard: Shard = newShard(newSaltHex, null);
     for (const r of refreshed) {
       // Use the freshly-computed hashes from the DB row.
-      shard = mergeEntry(shard, {
-        ts: Math.floor(r.createdAt.getTime() / 1000),
-        phone: r.phoneHash ?? "",
-        email: r.emailCanonicalHash ?? "",
-        addr_full: r.addressFullHash ?? "",
-        addr_house: "",
-        ip24: r.ipHash24 ?? "",
-        device: "",
-        email_sketch: parseSketchJson(r.emailMinhashSketch),
-        addr_sketch: parseSketchJson(r.addressMinhashSketch),
-      });
+      const mode = modeByOffer.get(r.protectedOfferId) ?? "block";
+      shard = mergeEntry(
+        shard,
+        {
+          protectedOfferId: r.protectedOfferId,
+          ts: Math.floor(r.createdAt.getTime() / 1000),
+          phone: r.phoneHash ?? "",
+          email: r.emailCanonicalHash ?? "",
+          addr_full: r.addressFullHash ?? "",
+          addr_house: "",
+          ip24: r.ipHash24 ?? "",
+          device: "",
+          email_sketch: parseSketchJson(r.emailMinhashSketch),
+          addr_sketch: parseSketchJson(r.addressMinhashSketch),
+        },
+        mode,
+      );
     }
     await rebuildShard(admin.graphql, creds, shard);
   } finally {

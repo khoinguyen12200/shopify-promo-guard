@@ -94,9 +94,9 @@ cat <<'MANUAL'
   [ ] Install: Partner dashboard → install on ${DEV_STORE}.myshopify.com.
   [ ] OAuth: accept scopes. Land on /app.
   [ ] Onboarding: follow first-run prompts.
-  [ ] Create offer: /app/offers/new → pick a welcome code → silent-strip.
+  [ ] Create offer: /app/offers/new → pick a welcome code from the list.
   [ ] Test block: place a test order in the dev store with a matching
-      phone/email → confirm discount is stripped.
+      phone/email → confirm checkout is blocked at validation.
   [ ] Flag visibility: /app/flagged shows the new flag.
   [ ] Admin block: open the native order-details page in Shopify admin.
       The Promo Guard block renders the flag + dismiss/cancel actions.

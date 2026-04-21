@@ -1,6 +1,11 @@
 # Promo Guard — Function Input Query Spec
 
-The exact GraphQL input queries for the Validation Function and Discount Function, along with the output contract each must satisfy.
+> Block-only enforcement (silent_strip mode was removed). Only the
+> Cart & Checkout Validation Function ships now — the Discount Function
+> sections that used to live here have been deleted.
+
+
+The exact GraphQL input query for the Cart & Checkout Validation Function, along with the output contract it must satisfy.
 
 Both queries must stay under the hard Shopify limits:
 
@@ -37,9 +42,7 @@ Both queries must stay under the hard Shopify limits:
 | `cart.buyerIdentity.customer.hasAnyTag(tags: [...])` | ✅ verified |
 | `cart.deliveryGroups.deliveryAddress.{address1, address2, city, zip, countryCode, phone}` | ✅ verified — `phone`, `address1`, etc. require level 2 |
 | `cart.attribute(key: ...) { value }` inside Validation Function | ✅ verified |
-| `cart.discountCodes { code, applicable }` inside **Validation** Function input | ⚠️ **unverified** — standard on Storefront Cart; the Validation Function input schema does not explicitly confirm it in the docs we've read. **Confirm at scaffolding time via `shopify app function schema --stdout` for `cart_checkout_validation`.** Fallback plan in §4. |
-| `input.triggeringDiscountCode` on Discount Function run target | ✅ verified (available in `cart.lines.discounts.generate.run` and `cart.delivery-options.discounts.generate.run`) |
-| `input.discount.metafield(namespace, key) { jsonValue }` on Discount Function | ✅ verified |
+| `cart.discountCodes { code, applicable }` inside **Validation** Function input | ❌ confirmed absent from the `cart_checkout_validation` schema. Adopted **Plan C** (see §9). |
 | `orderRiskAssessmentCreate` — risk levels `LOW`, `MEDIUM`, `HIGH`, `facts[]`, `provider{title}` | ✅ verified |
 
 ---
@@ -52,7 +55,6 @@ Each protected offer has a single JSON metafield that the Function reads as conf
 - the shop salt (for in-Rust hashing)
 - version marker
 - per-offer thresholds (hard-coded in MVP, just echoes `THRESHOLD_HIGH = 10`)
-- per-offer mode tag (purely informational in the Function; real mode is which function is deployed)
 
 ### Storage
 
@@ -225,94 +227,9 @@ On `ALLOW`: return `operations: vec![schema::Operation::ValidationAdd(schema::Va
 
 ---
 
-## 4. Discount Function — input query
+## 4. (removed)
 
-Two targets: `cart.lines.discounts.generate.run` and `cart.delivery-options.discounts.generate.run`. For MVP we only need the cart-lines target (welcome discounts that reduce order subtotal or product lines). Delivery target can be added later if merchants request free-shipping welcome offers.
-
-Output type: `CartLinesDiscountsGenerateRunResult`.
-
-### Query
-
-```graphql
-query Input {
-  triggeringDiscountCode
-
-  cart {
-    buyerIdentity {
-      email
-      phone
-      customer {
-        hasAnyTag(tags: ["__PG_TAG_PLACEHOLDER__"])
-      }
-    }
-
-    deliveryGroups {
-      deliveryAddress {
-        address1
-        address2
-        city
-        zip
-        countryCode
-      }
-    }
-  }
-
-  discount {
-    discountClasses
-    metafield(namespace: "$app", key: "pg_discount_config") { jsonValue }
-  }
-
-  shop {
-    phones:          metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_phones")        { value }
-    emailsExact:     metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_emails_exact")  { value }
-    emailsMinhash:   metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_emails_minhash"){ value }
-    addrsExact:      metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_addrs_exact")   { value }
-    addrsMinhash:    metafield(namespace: "$app", key: "pg_ledger_OFFER_ID_addrs_minhash") { value }
-  }
-}
-```
-
-### Cost calculation
-
-| Item | Count | Per-item cost | Subtotal |
-|---|---|---|---|
-| `triggeringDiscountCode` (leaf) | 1 | 1 | 1 |
-| `cart.buyerIdentity.{email, phone}` | 2 | 1 | 2 |
-| `hasAnyTag` | 1 | 3 | 3 |
-| `deliveryAddress` leaves | 5 | 1 | 5 |
-| `discount.discountClasses` (leaf — returns enum list, counted as 1) | 1 | 1 | 1 |
-| `discount.metafield(...)` | 1 | 3 | 3 |
-| `shop.metafield(...)` calls | 5 | 3 | 15 |
-| **Total** | | | **30** |
-
-Also exactly at budget. If `discount.metafield` isn't strictly required (we already have the shop-scoped config metafield from the Validation Function), we can drop it and save 3.
-
-Decision: **drop `discount.metafield` on the Discount Function for v1** — the Discount Function's config lives in `shop.metafield` alongside the shards. That frees budget.
-
-Revised total: 27. 3 headroom.
-
-### Why we need `triggeringDiscountCode`
-
-The Discount Function runs whenever its associated discount is being evaluated. For code-based welcome discounts, `triggeringDiscountCode` gives us the specific code the buyer typed. We use it for:
-
-- Fact attribution ("redemption of WELCOME15 blocked")
-- Multi-code protected offers where we want per-code stats
-
-For automatic discounts, it's `null`. We still know which function is running, so we can proceed without the triggering code.
-
-### Output shapes (Rust)
-
-**When score ≥ 10** — silently withhold the discount:
-
-```rust
-Ok(schema::CartLinesDiscountsGenerateRunResult { operations: vec![] })
-```
-
-An empty operations list means "no discount applied," and Shopify shows the code as "not applicable" to the buyer.
-
-**When score < 10** — emit the configured discount.
-
-We read the discount configuration from the `discount.metafield` (or the shop-scoped equivalent) and emit an `OrderDiscountsAdd` or `ProductDiscountsAdd` based on its shape. Exact mapping is mechanical and not part of this spec (lives in the Discount Function tutorial).
+The Discount Function used to live here. It was deleted along with `silent_strip` mode — block (validation function) is now the only enforcement path.
 
 ---
 
@@ -331,9 +248,6 @@ Per the toolkit's guidance, Functions are scaffolded and built only via Shopify 
 ```bash
 # Scaffold the Validation Function extension
 shopify app generate extension --template cart_checkout_validation --flavor rust --name promo-guard-validator
-
-# Scaffold the Discount Function extension
-shopify app generate extension --template discount --flavor rust --name promo-guard-discount
 
 # Download the current schema (for checking cart.discountCodes availability)
 shopify app function schema --stdout > schema.graphql
@@ -368,17 +282,6 @@ extensions/
     Cargo.toml
     schema.graphql                  ← generated by `shopify app function schema`
 
-  promo-guard-discount/
-    shopify.extension.toml
-    src/
-      main.rs                       ← pub mod cart_lines_discounts_generate_run;
-      cart_lines_discounts_generate_run.rs
-      cart_lines_discounts_generate_run.graphql
-      scoring.rs                    ← vendored
-      normalize.rs                  ← vendored
-      hash.rs                       ← vendored
-    Cargo.toml
-    schema.graphql
 ```
 
 Shared Rust library: `shared-lib/src/{normalize,hash,scoring,constants}.rs`. Copied into each extension during `shopify app function build` via a pre-build script (Cargo workspaces don't play perfectly with Shopify's function build flow).
@@ -412,31 +315,6 @@ watch   = ["src/**/*.rs", "src/**/*.graphql"]
 scopes = "read_customers"
 ```
 
-### Discount Function
-
-```toml
-api_version = "2025-10"
-
-[[extensions]]
-name        = "Promo Guard Discount"
-handle      = "promo-guard-discount"
-type        = "function"
-description = "Silently withholds a welcome discount when identity signals match a prior redemption."
-
-[[extensions.targeting]]
-target       = "cart.lines.discounts.generate.run"
-input_query  = "src/cart_lines_discounts_generate_run.graphql"
-export       = "cart_lines_discounts_generate_run"
-
-[extensions.build]
-command = "cargo build --target=wasm32-wasip1 --release"
-path    = "target/wasm32-wasip1/release/promo-guard-discount.wasm"
-watch   = ["src/**/*.rs", "src/**/*.graphql"]
-
-[access_scopes]
-scopes = "read_customers"
-```
-
 ---
 
 ## 9. Open questions confirmed during scaffolding (T24)
@@ -446,34 +324,41 @@ scopes = "read_customers"
 | 1 | Does `cart.discountCodes { code, applicable }` exist in the Cart and Checkout Validation Function schema? | **No.** Confirmed absent from the `cart_checkout_validation` schema at `api_version = 2025-10`. Adopted **Plan C** (see below). |
 | 2 | Are `email`, `phone`, `address1`, `zip` nullable in the input schema? | **Yes — all nullable.** Typegen emits `Option<&String>` for every buyer + address leaf. `hasAnyTag` is non-null `&bool`. `cart()` and `shop()` return `&T` (not Option). `deliveryAddress` is `Option<&DeliveryAddress>`. |
 | 3 | Does `shop.metafield(...)` resolve to null when the metafield doesn't exist yet? | **Yes — resolves to null**, not an error. The validator treats any absent / malformed shard as `Shard::default()` and fail-opens. |
-| 4 | Does the Discount Function have access to `discount.metafield` on code-based discounts? | Still to confirm in T27. |
-| 5 | Are there per-target cost differences in the 30-budget? | Docs imply flat 30; confirmed at build time — typegen + build succeed with cost ≤ 30. |
+| 4 | Are there per-target cost differences in the 30-budget? | Docs imply flat 30; confirmed at build time — typegen + build succeed with cost ≤ 30. |
 
 ### Plan C (adopted for v1)
 
 Because `cart.discountCodes` is absent from the Validation Function input schema, we cannot gate scoring on "cart contains our offer's code" at Function time. Instead:
 
-1. The app deploys **one Validation Function** and **one Discount Function** per shop (not per offer). Both functions read the same combined shop-wide shard, so adding a new protected offer is pure data — no function redeploy required.
-2. Activation is implicit — `cart_has_guarded_code: true` is set unconditionally inside each Function and the empty-ledger fast path inside `score_checkout` covers fresh installs. In practice, the validator is only activated on checkouts where the merchant has configured a Checkout Rule, and the discount function only runs when its bound discount code is applied — so reaching "evaluate" implies "protected flow."
-3. The shard layout collapses from 5 separate metafields (§2) to **a single combined shop-wide shard** under `namespace: "$app"`, `key: "shard_v1"`. We use the app-reserved `$app` namespace rather than a custom one because the authenticated app has full control of `$app`-prefixed metafields without requiring an extra access scope. Hashes from every protected offer on the shop are pooled into this one document — the app's `RedemptionRecord` table in Postgres keeps per-offer attribution for analytics. The combined shape:
+1. The app deploys **one Validation Function** per shop (not per offer). It reads a single shop-wide shard, so adding a new protected offer is pure data — no function redeploy required.
+2. Activation is automatic — when a merchant creates their first protected offer the app calls `validationCreate(functionHandle: "promo-guard-validator", enable: true)`. Subsequent activate/deactivate flips are mirrored via `validationUpdate`. No manual Checkout Rules wiring required.
+3. The shard is **per-offer-bucketed** under `namespace: "$app"`, `key: "shard_v2"`. The validator iterates each bucket, scores against that bucket's hashes, and emits a `ValidationError` for any offer whose score ≥ THRESHOLD_HIGH **AND** whose bucket has `mode: "block"`. Watch-mode offers never block — they're caught post-order via the orders/paid handler. Per-offer segmentation is required for correctness: a buyer who redeemed offer A's discount must still be able to redeem a different offer B for the first time.
+
+Shard shape (v2):
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "salt_hex": "deadbeef...",
   "default_country_cc": "+84",
-  "phone_hashes":         ["a1b2c3d4", ...],
-  "email_hashes":         ["..."],
-  "address_full_hashes":  ["..."],
-  "address_house_hashes": ["..."],
-  "ip_hashes":            ["..."],
-  "device_hashes":        ["..."],
-  "email_sketches":       ["1a2b3c4d000000017fffffffffffffff", ...],
-  "address_sketches":     ["..."]
+  "offers": {
+    "<protectedOfferId>": {
+      "mode": "block",                                            // or "watch"
+      "entry_ts":             [1700000001, ...],
+      "phone_hashes":         ["a1b2c3d4", ...],
+      "email_hashes":         ["..."],
+      "address_full_hashes":  ["..."],
+      "address_house_hashes": ["..."],
+      "ip_hashes":            ["..."],
+      "device_hashes":        ["..."],
+      "email_sketches":       ["1a2b3c4d000000017fffffffffffffff", ...],
+      "address_sketches":     ["..."]
+    }
+  }
 }
 ```
 
-All fields optional; the parser drops malformed hex entries per-row so a single bad value cannot take the shop offline.
+All fields optional; the parser drops malformed hex entries per-row so a single bad value cannot take the shop offline. Eviction is global LRU — when serialized size exceeds the cap, the validator's writer picks the offer holding the globally-oldest entry and trims its arrays in lockstep.
 
 ### Plan C cost calculation
 
@@ -481,16 +366,16 @@ All fields optional; the parser drops malformed hex entries per-row so a single 
 |---|---|---|---|
 | Leaf scalars under `cart.buyerIdentity` (`email`, `phone`) | 2 | 1 | 2 |
 | `hasAnyTag` | 1 | 3 | 3 |
-| Leaf scalars under `deliveryAddress` | 5 | 1 | 5 |
-| `shop.metafield(...)` (single combined shard) | 1 | 3 | 3 |
+| Leaf scalars under `deliveryAddress` | 4 | 1 | 4 |
+| `shop.metafield(...)` (single shard) | 1 | 3 | 3 |
 | Field on `Metafield` (`jsonValue`) | 1 | 0 | 0 |
-| **Total** | | | **13** |
+| **Total** | | | **12** |
 
-17 points of headroom. MinHash sketch computation at checkout is explicitly skipped in v1 (keeps the wasm under the 256 KB size budget); fuzzy matching is deferred to post-order scoring (scoring-spec §5.2).
+18 points of headroom. MinHash sketch computation at checkout is explicitly skipped in v1 (the JS validator runs on Javy with a tight wasm budget — Javy's runtime baseline is ~80 KB); fuzzy matching is deferred to post-order scoring (scoring-spec §5.2).
 
 ---
 
 ## 10. Non-goals
 
-- **Per-offer function deploys** — Plan C (§9) adopts a single shop-wide shard and one function pair per shop. Cross-offer detection is an acceptable consequence: a buyer who redeemed *any* protected offer is flagged when abusing *any other*. The per-offer analytics split lives in Postgres (`RedemptionRecord.protectedOfferId`), not in the metafield.
-- **Delivery discount guarding** — we only emit `CartLinesDiscountsGenerateRunResult` targeting order/product subtotal. Free-shipping welcome offers need the delivery target; not in MVP.
+- **Per-offer function deploys** — Plan C (§9) adopts a single shop-wide shard with per-offer buckets and one validation function per shop. The per-offer analytics split lives in Postgres (`RedemptionRecord.protectedOfferId`); per-offer enforcement decisions live in the bucket's `mode` field within the shard.
+- **Discount-time enforcement (silent strip)** — we don't ship a Discount Function. Block (validation) is the only checkout-time enforcement; the discount-function context didn't have the signal coverage to detect abuse reliably.
